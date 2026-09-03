@@ -109,3 +109,98 @@ export function fatorMensal(serieMensal, iniISO, fimISO) {
   }
   return fator
 }
+
+export const SERIE_DE_INDICE = { INPC: 'INPC', IGPM: 'IGPM', 'IPCA-E': 'IPCA15', IPCA: 'IPCA' }
+
+const FUND_PRE = ['STJ, REsp 1.795.982/SP (Corte Especial)', 'CC, art. 397']
+const FUND_POS = ['Lei 14.905/2024 (arts. 389 e 406 do CC)', 'CC, art. 397']
+const FUND_CONV = ['título executivo', 'CC, art. 397']
+
+function brData(iso) {
+  const [a, m, d] = iso.split('-')
+  return `${d}/${m}/${a}`
+}
+
+function dedup(arr) {
+  const visto = new Set()
+  const out = []
+  for (const x of arr) if (!visto.has(x)) { visto.add(x); out.push(x) }
+  return out
+}
+
+/**
+ * Atualiza `principal` de ini até fim (exclusivo). Ver Interfaces da Task 5.
+ * Não arredonda.
+ */
+export function atualizarIntervalo({ principal, ini, fim, indiceCorrecao, regimeJuros, series }) {
+  if (fim <= ini) {
+    return { correcao: 0, juros: 0, criterioCorrecao: '—', criterioJuros: '—', fundamentos: [] }
+  }
+
+  if (indiceCorrecao === 'legal') {
+    let montante = principal
+    let correcaoTotal = 0
+    let jurosTotal = 0
+    const criteriosC = []
+    const criteriosJ = []
+    const funds = []
+    for (const p of partesTrecho(ini, fim)) {
+      if (p.regime === 'pre') {
+        const fs = fatorSelic(series.SELIC_DIARIA, p.ini, p.fim)
+        const acr = montante * (fs - 1)
+        jurosTotal += acr
+        montante += acr
+        criteriosJ.push(`SELIC isolada de ${brData(p.ini)} a ${brData(p.fim)} (STJ, REsp 1.795.982/SP)`)
+        funds.push(...FUND_PRE)
+      } else {
+        const fi = fatorMensal(series.IPCA, p.ini, p.fim)
+        const corr = montante * (fi - 1)
+        correcaoTotal += corr
+        montante += corr
+        const fsel = fatorSelic(series.SELIC_DIARIA, p.ini, p.fim)
+        const jur = montante * Math.max(0, fsel - fi)
+        jurosTotal += jur
+        montante += jur
+        criteriosC.push(`IPCA de ${brData(p.ini)} a ${brData(p.fim)}, pró-rata die`)
+        criteriosJ.push(`SELIC menos IPCA no período (Lei 14.905/2024, art. 406 do CC)`)
+        funds.push(...FUND_POS)
+      }
+    }
+    return {
+      correcao: correcaoTotal,
+      juros: jurosTotal,
+      criterioCorrecao: criteriosC.join(' + ') || '—',
+      criterioJuros: criteriosJ.join(' + ') || '—',
+      fundamentos: dedup(funds),
+    }
+  }
+
+  // convencionado
+  const chave = SERIE_DE_INDICE[indiceCorrecao]
+  if (!chave) throw new Error(`indiceCorrecao inválido: ${indiceCorrecao}`)
+  const fconv = fatorMensal(series[chave], ini, fim)
+  const correcao = principal * (fconv - 1)
+  const corrigido = principal + correcao
+  const dias = diasCorridos(ini, fim)
+  let juros
+  let critJ
+  if (regimeJuros === '1_am_simples') {
+    juros = corrigido * 0.01 * (dias / 30)
+    critJ = 'juros de mora de 1% ao mês, simples, pró-rata die'
+  } else if (regimeJuros === '1_am_capitalizado') {
+    juros = corrigido * (1.01 ** (dias / 30) - 1)
+    critJ = 'juros de mora de 1% ao mês, capitalizados, pró-rata die'
+  } else if (regimeJuros === 'selic') {
+    juros = corrigido * (fatorSelic(series.SELIC_DIARIA, ini, fim) - 1)
+    critJ = 'juros pela SELIC no período'
+  } else {
+    throw new Error(`regimeJuros inválido: ${regimeJuros}`)
+  }
+  return {
+    correcao,
+    juros,
+    criterioCorrecao: `${indiceCorrecao} de ${brData(ini)} a ${brData(fim)}, pró-rata die (índice convencionado no título)`,
+    criterioJuros: critJ,
+    fundamentos: dedup(FUND_CONV),
+  }
+}

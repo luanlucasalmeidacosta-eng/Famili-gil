@@ -101,3 +101,92 @@ describe('fatorMensal', () => {
     expect(fatorMensal(ipca, '2024-09-01', '2024-09-01')).toBe(1)
   })
 })
+
+import { atualizarIntervalo, SERIE_DE_INDICE } from './_motor-pensao.js'
+
+// eslint-disable-next-line no-unused-vars
+const selicZero = {} // sem dias -> fatorSelic lança se intervalo>0; usar quando não deve ser chamado
+function selicFlat(taxa, de, ate) {
+  // gera série diária plana de 'de' até 'ate' exclusivo
+  const s = {}
+  const d = new Date(`${de}T00:00:00Z`)
+  const fim = new Date(`${ate}T00:00:00Z`)
+  while (d < fim) { s[d.toISOString().slice(0, 10)] = taxa; d.setUTCDate(d.getUTCDate() + 1) }
+  return s
+}
+
+describe('atualizarIntervalo — legal', () => {
+  it('parcela toda no regime pré → só juros SELIC, correção 0', () => {
+    const series = { SELIC_DIARIA: selicFlat(0.04, '2024-01-10', '2024-06-01') }
+    const r = atualizarIntervalo({
+      principal: 1000, ini: '2024-01-10', fim: '2024-06-01',
+      indiceCorrecao: 'legal', regimeJuros: '1_am_simples', series,
+    })
+    expect(r.correcao).toBe(0)
+    expect(r.juros).toBeGreaterThan(0)
+    expect(r.fundamentos).toContain('STJ, REsp 1.795.982/SP (Corte Especial)')
+    expect(r.fundamentos).toContain('CC, art. 397')
+  })
+
+  it('parcela toda no regime pós → correção IPCA; juros = max(0, SELIC−IPCA) com piso zero', () => {
+    const series = {
+      IPCA: { '2024-09-01': 1.0 },
+      SELIC_DIARIA: selicFlat(0, '2024-09-01', '2024-10-01'), // SELIC 0 → fatorSelic ~1 < 1.01
+    }
+    const r = atualizarIntervalo({
+      principal: 1000, ini: '2024-09-01', fim: '2024-10-01',
+      indiceCorrecao: 'legal', regimeJuros: '1_am_simples', series,
+    })
+    expect(r.correcao).toBeCloseTo(10, 6) // 1% de 1000
+    expect(r.juros).toBe(0)               // piso zero
+    expect(r.fundamentos).toContain('Lei 14.905/2024 (arts. 389 e 406 do CC)')
+  })
+
+  it('intervalo que cruza a fronteira → dois trechos compostos (pré juros + pós correção)', () => {
+    const series = {
+      SELIC_DIARIA: selicFlat(0.02, '2024-08-01', '2024-10-01'),
+      IPCA: { '2024-08-01': 0.5, '2024-09-01': 0.5 },
+    }
+    const r = atualizarIntervalo({
+      principal: 1000, ini: '2024-08-01', fim: '2024-10-01',
+      indiceCorrecao: 'legal', regimeJuros: '1_am_simples', series,
+    })
+    expect(r.correcao).toBeGreaterThan(0) // veio do trecho pós (IPCA)
+    expect(r.juros).toBeGreaterThan(0)    // veio do trecho pré (SELIC) e talvez do pós
+    expect(r.fundamentos).toEqual(expect.arrayContaining([
+      'STJ, REsp 1.795.982/SP (Corte Especial)',
+      'Lei 14.905/2024 (arts. 389 e 406 do CC)',
+      'CC, art. 397',
+    ]))
+  })
+})
+
+describe('atualizarIntervalo — convencionado', () => {
+  it('INPC + 1% a.m. simples', () => {
+    const series = { INPC: { '2024-03-01': 1.0 } }
+    const r = atualizarIntervalo({
+      principal: 1000, ini: '2024-03-01', fim: '2024-04-01',
+      indiceCorrecao: 'INPC', regimeJuros: '1_am_simples', series,
+    })
+    expect(r.correcao).toBeCloseTo(10, 6)      // INPC 1%
+    expect(r.juros).toBeCloseTo(1010 * 0.01 * (31 / 30), 6) // 1% a.m. sobre corrigido, pró-rata 31 dias
+    expect(r.fundamentos).toContain('título executivo')
+  })
+
+  it('IPCA-E mapeia para a série IPCA15', () => {
+    expect(SERIE_DE_INDICE['IPCA-E']).toBe('IPCA15')
+    const series = { IPCA15: { '2024-03-01': 2.0 } }
+    const r = atualizarIntervalo({
+      principal: 1000, ini: '2024-03-01', fim: '2024-04-01',
+      indiceCorrecao: 'IPCA-E', regimeJuros: 'selic', series: { ...series, SELIC_DIARIA: selicFlat(0, '2024-03-01', '2024-04-01') },
+    })
+    expect(r.correcao).toBeCloseTo(20, 6)
+  })
+
+  it('série ausente → propaga o erro', () => {
+    expect(() => atualizarIntervalo({
+      principal: 1000, ini: '2024-03-01', fim: '2024-04-01',
+      indiceCorrecao: 'INPC', regimeJuros: '1_am_simples', series: {},
+    })).toThrow()
+  })
+})
