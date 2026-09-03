@@ -36,3 +36,20 @@ export function janelasDe10Anos(inicioISO, fimISO) {
   }
   return janelas
 }
+
+/**
+ * Normaliza o payload JSON do SGS.
+ * @param {Array<{data: string, valor: string}>} payload
+ * @param {'dia'|'mes'} tipoRef
+ * @returns {Array<{ref: string, valor: number}>}
+ */
+export function parseSgsJson(payload, tipoRef) {
+  const out = []
+  for (const item of payload) {
+    if (item?.valor == null || String(item.valor).trim() === '') continue
+    const [d, m, a] = item.data.split('/')
+    const ref = tipoRef === 'mes' ? `${a}-${m}-01` : `${a}-${m}-${d}`
+    out.push({ ref, valor: Number(item.valor) })
+  }
+  return out
+}

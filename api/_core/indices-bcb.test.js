@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { SERIES, janelasDe10Anos } from './indices-bcb.js'
+import { SERIES, janelasDe10Anos, parseSgsJson } from './indices-bcb.js'
 
 describe('SERIES', () => {
   it('tem os códigos SGS do spec', () => {
@@ -25,5 +25,25 @@ describe('janelasDe10Anos', () => {
 
   it('rejeita intervalo invertido', () => {
     expect(() => janelasDe10Anos('2025-01-01', '2020-01-01')).toThrow()
+  })
+})
+
+describe('parseSgsJson', () => {
+  it('série diária → ref = data ISO', () => {
+    const out = parseSgsJson([{ data: '30/08/2024', valor: '0.0417' }], 'dia')
+    expect(out).toEqual([{ ref: '2024-08-30', valor: 0.0417 }])
+  })
+
+  it('série mensal → ref = 1º dia do mês', () => {
+    const out = parseSgsJson([{ data: '01/07/2024', valor: '0.38' }], 'mes')
+    expect(out).toEqual([{ ref: '2024-07-01', valor: 0.38 }])
+  })
+
+  it('descarta entradas sem valor', () => {
+    const out = parseSgsJson(
+      [{ data: '01/07/2024', valor: '' }, { data: '01/08/2024', valor: '0.02' }],
+      'mes',
+    )
+    expect(out).toEqual([{ ref: '2024-08-01', valor: 0.02 }])
   })
 })
