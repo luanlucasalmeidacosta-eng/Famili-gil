@@ -7,9 +7,14 @@
 
 export const FRONTEIRA_LEI = '2024-08-30' // 1º dia do regime pós-Lei 14.905/2024
 
-/** 2 casas decimais, meio para cima, robusto a ruído de ponto flutuante. */
+/** 2 casas decimais, meio para cima, robusto a artefato de ponto flutuante. */
 export function arredonda2(n) {
-  return Math.round((n + Number.EPSILON) * 100) / 100
+  // normaliza para 3 casas (toFixed arredonda o double real corretamente),
+  // depois decide o centavo pelo milésimo em aritmética inteira.
+  const milesimos = Math.round(Number(n.toFixed(3)) * 1000)
+  const resto = ((milesimos % 10) + 10) % 10
+  const base = milesimos - (milesimos % 10)
+  return (resto >= 5 ? base + 10 : base) / 1000
 }
 
 function ms(iso) {
@@ -89,15 +94,14 @@ export function fatorMensal(serieMensal, iniISO, fimISO) {
   const compFim = competenciaDe(fimISO) // mês onde termina (exclusivo no dia, mas o mês pode ser tocado)
   // percorre cada competência de comp até (e incluindo) o mês de fimISO, enquanto houver dias no trecho
   while (comp <= compFim) {
-    const m = serieMensal[comp]
-    if (m == null) throw new Error(`índice mensal ausente para a competência ${comp}`)
     const inicioMes = comp
     const fimMes = proximaCompetencia(comp)
-    // interseção [ini,fim) ∩ [inicioMes, fimMes)
     const a = iniISO > inicioMes ? iniISO : inicioMes
     const b = fimISO < fimMes ? fimISO : fimMes
     const dias = diasCorridos(a, b)
     if (dias > 0) {
+      const m = serieMensal[comp]
+      if (m == null) throw new Error(`índice mensal ausente para a competência ${comp}`)
       const dim = diasNoMes(comp)
       fator *= dias >= dim ? 1 + m / 100 : 1 + (m / 100) * (dias / dim)
     }

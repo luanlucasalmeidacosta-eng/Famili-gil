@@ -4,8 +4,12 @@
 // determinística — usada pela AbaParcelas e testada isolada.
 
 function arredonda2(n) {
-  // meio para cima, robusto a ruído de ponto flutuante
-  return Math.round((n + Number.EPSILON) * 100) / 100
+  // normaliza para 3 casas (toFixed arredonda o double real corretamente),
+  // depois decide o centavo pelo milésimo em aritmética inteira.
+  const milesimos = Math.round(Number(n.toFixed(3)) * 1000)
+  const resto = ((milesimos % 10) + 10) % 10
+  const base = milesimos - (milesimos % 10)
+  return (resto >= 5 ? base + 10 : base) / 1000
 }
 
 function ultimoDiaDoMes(ano, mes1) {

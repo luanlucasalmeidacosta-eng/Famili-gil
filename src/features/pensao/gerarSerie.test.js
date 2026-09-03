@@ -37,4 +37,12 @@ describe('gerarSerie', () => {
   it('lança se pct_rendimento sem rendimentoRef', () => {
     expect(() => gerarSerie({ ...base, tipoValor: 'pct_rendimento', rendimentoRef: undefined })).toThrow()
   })
+
+  it('arredondamento half-up no valor da parcela (pct que cai em x.xx5)', () => {
+    const s = gerarSerie({
+      tipoValor: 'fixo', valorBase: 5.015,
+      diaVencimento: 5, dataInicial: '2024-05-01', dataFinal: '2024-05-31',
+    })
+    expect(s[0].valorDevido).toBe(5.02)
+  })
 })

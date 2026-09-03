@@ -8,6 +8,11 @@ describe('arredonda2', () => {
     expect(arredonda2(2.345)).toBe(2.35)
     expect(arredonda2(423.6)).toBe(423.6)
   })
+  it('arredondamento half-up robusto em x.xx5 para operandos maiores', () => {
+    expect(arredonda2(5.015)).toBe(5.02)
+    expect(arredonda2(8.005)).toBe(8.01)
+    expect(arredonda2(100.005)).toBe(100.01)
+  })
 })
 
 describe('diasCorridos', () => {
@@ -88,6 +93,9 @@ describe('fatorMensal', () => {
   })
   it('falta a competência de um mês tocado → lança', () => {
     expect(() => fatorMensal(ipca, '2024-08-15', '2024-09-15')).toThrow() // falta 2024-08-01
+  })
+  it('mês-fim exclusivo (1º do mês) sem dados na série → não lança se ele não contribui dias', () => {
+    expect(fatorMensal({ '2024-09-01': 1.0 }, '2024-09-01', '2024-10-01')).toBeCloseTo(1.01, 10)
   })
   it('ini == fim → 1', () => {
     expect(fatorMensal(ipca, '2024-09-01', '2024-09-01')).toBe(1)
