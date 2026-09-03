@@ -4,6 +4,10 @@
   "buildCommand": "vite build",
   "outputDirectory": "dist",
   "fluid": true,
+  "functions": {
+    "api/pensao/calcular.js": { "maxDuration": 60 },
+    "api/pensao/exportar.js": { "maxDuration": 60 }
+  },
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
