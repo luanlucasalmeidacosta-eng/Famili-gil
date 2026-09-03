@@ -121,6 +121,11 @@ function brData(iso) {
   return `${d}/${m}/${a}`
 }
 
+function brData2(iso) {
+  const [a, m, d] = iso.split('-')
+  return `${d}/${m}/${a}`
+}
+
 function dedup(arr) {
   const visto = new Set()
   const out = []
@@ -346,5 +351,64 @@ export function atualizarIntervalo({ principal, ini, fim, indiceCorrecao, regime
     criterioCorrecao: `${indiceCorrecao} de ${brData(ini)} a ${brData(fim)}, pró-rata die (índice convencionado no título)`,
     criterioJuros: critJ,
     fundamentos: dedup(FUND_CONV),
+  }
+}
+
+export function calcularMemoria({
+  parcelas, pagamentos, dataBase, dataCitacao,
+  indiceCorrecao, regraImputacao, regimeJurosConvencionado, series,
+}) {
+  const ativas = parcelas
+    .filter((p) => p.ativa === true)
+    .sort((a, b) =>
+      a.vencimento < b.vencimento ? -1 : a.vencimento > b.vencimento ? 1
+        : a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+
+  const regimeJuros = indiceCorrecao === 'legal' ? '1_am_simples' : regimeJurosConvencionado
+
+  const dist = distribuirPagamentos({
+    parcelasAtivas: ativas.map((p) => ({ id: p.id, vencimento: p.vencimento, valorDevido: p.valorDevido })),
+    pagamentos,
+    regraImputacao,
+  })
+
+  const linhas = ativas.map((p) => {
+    const abat = [...(dist[p.id] || [])].sort((a, b) =>
+      a.data < b.data ? -1 : a.data > b.data ? 1
+        : a.pagamentoId < b.pagamentoId ? -1 : a.pagamentoId > b.pagamentoId ? 1 : 0)
+    return calcularLinhaParcela({
+      parcela: { id: p.id, competencia: p.competencia, vencimento: p.vencimento, valorDevido: p.valorDevido },
+      abatimentos: abat,
+      dataBase, dataCitacao, indiceCorrecao, regimeJuros, series,
+    })
+  })
+
+  const somaOriginal = arredonda2(linhas.reduce((s, l) => s + l.valorDevidoOriginal, 0))
+  const somaCorrecao = arredonda2(linhas.reduce((s, l) => s + l.correcao.valor, 0))
+  const somaJuros = arredonda2(linhas.reduce((s, l) => s + l.juros.valor, 0))
+  const somaPagamentos = arredonda2(
+    linhas.reduce((s, l) => s + l.pagamentosAbatidos.reduce((t, p) => t + p.valorPago, 0), 0),
+  )
+  const saldo = arredonda2(linhas.reduce((s, l) => s + l.saldoAtualizado, 0))
+
+  const alertas = []
+  if (dataCitacao) {
+    for (const p of ativas) {
+      if (p.vencimento < dataCitacao) {
+        alertas.push(
+          `Parcela ${p.competencia.slice(0, 7)} vence antes da citação (${brData2(dataCitacao)}); ` +
+          `confira a exigibilidade neste feito (Lei 5.478/68, art. 13, §2º).`,
+        )
+      }
+    }
+  }
+  if (dist.__excedente__ || saldo < 0) {
+    alertas.push(`Os pagamentos superam o débito atualizado em R$ ${arredonda2(Math.abs(saldo))} na data-base.`)
+  }
+
+  return {
+    linhas,
+    totais: { somaOriginal, somaCorrecao, somaJuros, somaPagamentos, saldo },
+    alertas,
   }
 }

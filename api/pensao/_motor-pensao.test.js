@@ -102,7 +102,7 @@ describe('fatorMensal', () => {
   })
 })
 
-import { atualizarIntervalo, SERIE_DE_INDICE, distribuirPagamentos, calcularLinhaParcela } from './_motor-pensao.js'
+import { atualizarIntervalo, SERIE_DE_INDICE, distribuirPagamentos, calcularLinhaParcela, calcularMemoria } from './_motor-pensao.js'
 
 // eslint-disable-next-line no-unused-vars
 const selicZero = {} // sem dias -> fatorSelic lança se intervalo>0; usar quando não deve ser chamado
@@ -279,5 +279,50 @@ describe('calcularLinhaParcela', () => {
     })
     expect(linha.pagamentosAbatidos[0]).toMatchObject({ pagamentoId: 'g1', data: '2024-03-20', valorPago: 400 })
     expect(linha.saldoAtualizado).toBe(600) // 1000 - 400, sem correção/juros
+  })
+})
+
+const seriesZero = {
+  IPCA: Object.fromEntries(['2024-01', '2024-02', '2024-03', '2024-04'].map((m) => [`${m}-01`, 0])),
+}
+const parcelas3 = [
+  { id: 'p1', competencia: '2024-01-01', vencimento: '2024-01-10', valorDevido: 1000, ativa: true },
+  { id: 'p2', competencia: '2024-02-01', vencimento: '2024-02-10', valorDevido: 1000, ativa: true },
+  { id: 'p3', competencia: '2024-03-01', vencimento: '2024-03-10', valorDevido: 1000, ativa: false },
+]
+
+describe('calcularMemoria', () => {
+  const entrada = {
+    parcelas: parcelas3,
+    pagamentos: [{ id: 'g1', dataPagamento: '2024-03-01', valor: 500, identificadoPara: null }],
+    dataBase: '2024-04-01', dataCitacao: null,
+    indiceCorrecao: 'IPCA', regraImputacao: 'mais_antigas_primeiro',
+    regimeJurosConvencionado: '1_am_simples', series: seriesZero,
+  }
+
+  it('ignora parcela inativa; soma bate; pagamento abatido da mais antiga', () => {
+    const m = calcularMemoria(entrada)
+    expect(m.linhas.map((l) => l.parcelaId)).toEqual(['p1', 'p2']) // p3 inativa fora
+    expect(m.totais.somaOriginal).toBe(2000)
+    expect(m.totais.somaPagamentos).toBe(500)
+    expect(m.totais.saldo).toBe(1500)
+    expect(m.linhas[0].pagamentosAbatidos[0].valorPago).toBe(500)
+  })
+
+  it('alerta de retroação quando a parcela vence antes da citação', () => {
+    const m = calcularMemoria({ ...entrada, dataCitacao: '2024-02-01' })
+    expect(m.alertas.some((a) => a.includes('vence antes da citação'))).toBe(true)
+  })
+
+  it('alerta quando os pagamentos superam o débito', () => {
+    const m = calcularMemoria({
+      ...entrada,
+      pagamentos: [{ id: 'g1', dataPagamento: '2024-03-01', valor: 9000, identificadoPara: null }],
+    })
+    expect(m.alertas.some((a) => a.includes('superam o débito'))).toBe(true)
+  })
+
+  it('determinístico: dois runs → JSON idêntico', () => {
+    expect(JSON.stringify(calcularMemoria(entrada))).toBe(JSON.stringify(calcularMemoria(entrada)))
   })
 })
