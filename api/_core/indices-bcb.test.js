@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { SERIES, janelasDe10Anos, parseSgsJson } from './indices-bcb.js'
+import { SERIES, janelasDe10Anos, parseSgsJson, buscarSerieNoSgs } from './indices-bcb.js'
 
 describe('SERIES', () => {
   it('tem os códigos SGS do spec', () => {
@@ -45,5 +45,53 @@ describe('parseSgsJson', () => {
       'mes',
     )
     expect(out).toEqual([{ ref: '2024-08-01', valor: 0.02 }])
+  })
+})
+
+function fakeFetchOk(mapaUrlParaPayload) {
+  return async (url) => {
+    const payload = mapaUrlParaPayload[url] ?? mapaUrlParaPayload['*']
+    return { ok: true, status: 200, json: async () => payload }
+  }
+}
+
+describe('buscarSerieNoSgs', () => {
+  it('uma janela: chama o SGS e normaliza', async () => {
+    const fetchImpl = fakeFetchOk({
+      '*': [{ data: '01/07/2024', valor: '0.38' }, { data: '01/08/2024', valor: '0.02' }],
+    })
+    const out = await buscarSerieNoSgs({
+      codigo: 433, tipoRef: 'mes', inicioISO: '2024-07-01', fimISO: '2024-08-31', fetchImpl,
+    })
+    expect(out).toEqual([
+      { ref: '2024-07-01', valor: 0.38 },
+      { ref: '2024-08-01', valor: 0.02 },
+    ])
+  })
+
+  it('duas janelas (>10 anos): concatena, ordena, deduplica', async () => {
+    let chamadas = 0
+    const fetchImpl = async () => {
+      chamadas += 1
+      const payload = chamadas === 1
+        ? [{ data: '01/06/2015', valor: '0.5' }]
+        : [{ data: '01/06/2015', valor: '0.5' }, { data: '01/06/2021', valor: '0.7' }]
+      return { ok: true, status: 200, json: async () => payload }
+    }
+    const out = await buscarSerieNoSgs({
+      codigo: 433, tipoRef: 'mes', inicioISO: '2010-01-01', fimISO: '2022-01-01', fetchImpl,
+    })
+    expect(chamadas).toBe(2)
+    expect(out).toEqual([
+      { ref: '2015-06-01', valor: 0.5 },
+      { ref: '2021-06-01', valor: 0.7 },
+    ])
+  })
+
+  it('janela não-OK → lança com série e período', async () => {
+    const fetchImpl = async () => ({ ok: false, status: 503, json: async () => ({}) })
+    await expect(
+      buscarSerieNoSgs({ codigo: 11, tipoRef: 'dia', inicioISO: '2024-01-01', fimISO: '2024-02-01', fetchImpl }),
+    ).rejects.toThrow(/11/)
   })
 })

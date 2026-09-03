@@ -53,3 +53,32 @@ export function parseSgsJson(payload, tipoRef) {
   }
   return out
 }
+
+const SGS_BASE = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs'
+
+function urlSgs(codigo, inicioBR, fimBR) {
+  return `${SGS_BASE}.${codigo}/dados?formato=json&dataInicial=${inicioBR}&dataFinal=${fimBR}`
+}
+
+/**
+ * Busca uma série no SGS, janelada em 10 anos.
+ * @returns {Promise<Array<{ref: string, valor: number}>>}
+ * @throws {Error} se qualquer janela responder não-OK
+ */
+export async function buscarSerieNoSgs({ codigo, tipoRef, inicioISO, fimISO, fetchImpl }) {
+  const janelas = janelasDe10Anos(inicioISO, fimISO)
+  const porRef = new Map()
+  for (const { inicioBR, fimBR } of janelas) {
+    const resp = await fetchImpl(urlSgs(codigo, inicioBR, fimBR))
+    if (!resp.ok) {
+      throw new Error(
+        `SGS série ${codigo} indisponível para ${inicioBR}–${fimBR} (HTTP ${resp.status})`,
+      )
+    }
+    const payload = await resp.json()
+    for (const { ref, valor } of parseSgsJson(payload, tipoRef)) porRef.set(ref, valor)
+  }
+  return [...porRef.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([ref, valor]) => ({ ref, valor }))
+}
