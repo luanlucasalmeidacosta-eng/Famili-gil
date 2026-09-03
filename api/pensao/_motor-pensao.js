@@ -128,6 +128,150 @@ function dedup(arr) {
   return out
 }
 
+function ordenarPagamentos(pgs) {
+  return [...pgs].sort((a, b) =>
+    a.dataPagamento < b.dataPagamento ? -1 : a.dataPagamento > b.dataPagamento ? 1
+      : a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+}
+
+export function distribuirPagamentos({ parcelasAtivas, pagamentos, regraImputacao }) {
+  const abertoNominal = new Map(parcelasAtivas.map((p) => [p.id, p.valorDevido]))
+  const dest = {}
+  const push = (pid, pagamentoId, data, valor) => {
+    if (valor <= 0) return
+    ;(dest[pid] ||= []).push({ pagamentoId, data, valor })
+  }
+  const porId = new Map(parcelasAtivas.map((p) => [p.id, p]))
+
+  const ordemAntigas = [...parcelasAtivas].sort((a, b) =>
+    a.vencimento < b.vencimento ? -1 : a.vencimento > b.vencimento ? 1
+      : a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  const ordemRecentes = [...ordemAntigas].reverse()
+
+  for (const pg of ordenarPagamentos(pagamentos)) {
+    let restante = pg.valor
+
+    if (pg.identificadoPara && porId.has(pg.identificadoPara)) {
+      const cap = abertoNominal.get(pg.identificadoPara)
+      const usa = Math.min(restante, cap)
+      push(pg.identificadoPara, pg.id, pg.dataPagamento, usa)
+      abertoNominal.set(pg.identificadoPara, cap - usa)
+      restante -= usa
+    }
+    if (restante <= 0) continue
+
+    if (regraImputacao === 'pro_rata') {
+      const abertas = ordemAntigas.filter((p) => abertoNominal.get(p.id) > 0)
+      const somaAberto = abertas.reduce((s, p) => s + abertoNominal.get(p.id), 0)
+      if (somaAberto <= 0) { push('__excedente__', pg.id, pg.dataPagamento, restante); continue }
+      let distribuido = 0
+      abertas.forEach((p, i) => {
+        const quota = i === abertas.length - 1
+          ? restante - distribuido
+          : restante * (abertoNominal.get(p.id) / somaAberto)
+        const usa = Math.min(quota, abertoNominal.get(p.id))
+        push(p.id, pg.id, pg.dataPagamento, usa)
+        abertoNominal.set(p.id, abertoNominal.get(p.id) - usa)
+        distribuido += usa
+      })
+      const sobra = restante - distribuido
+      if (sobra > 1e-9) push('__excedente__', pg.id, pg.dataPagamento, sobra)
+      continue
+    }
+
+    const ordem = regraImputacao === 'mais_recentes_primeiro' ? ordemRecentes : ordemAntigas
+    for (const p of ordem) {
+      if (restante <= 0) break
+      const cap = abertoNominal.get(p.id)
+      if (cap <= 0) continue
+      const usa = Math.min(restante, cap)
+      push(p.id, pg.id, pg.dataPagamento, usa)
+      abertoNominal.set(p.id, cap - usa)
+      restante -= usa
+    }
+    if (restante > 1e-9) push('__excedente__', pg.id, pg.dataPagamento, restante)
+  }
+  return dest
+}
+
+export function calcularLinhaParcela({
+  parcela, abatimentos, dataBase, _dataCitacao, indiceCorrecao, regimeJuros, series,
+}) {
+  const venc = parcela.vencimento
+  // datas de corte: as dos abatimentos, "grampeadas" em [venc, dataBase], ordenadas e únicas
+  const cortes = [...new Set(
+    abatimentos.map((a) => (a.data < venc ? venc : a.data > dataBase ? dataBase : a.data)),
+  )].sort()
+  const marcos = [venc, ...cortes.filter((d) => d > venc && d < dataBase), dataBase]
+
+  let montante = parcela.valorDevido
+  let corrAcc = 0
+  let jurosAcc = 0
+  const criteriosC = []
+  const criteriosJ = []
+  const funds = []
+  const pagamentosAbatidos = []
+
+  for (let i = 0; i < marcos.length - 1; i++) {
+    const a = marcos[i]
+    const b = marcos[i + 1]
+    if (b > a) {
+      const r = atualizarIntervalo({ principal: montante, ini: a, fim: b, indiceCorrecao, regimeJuros, series })
+      corrAcc += r.correcao
+      jurosAcc += r.juros
+      montante += r.correcao + r.juros
+      if (r.criterioCorrecao !== '—') criteriosC.push(r.criterioCorrecao)
+      if (r.criterioJuros !== '—') criteriosJ.push(r.criterioJuros)
+      funds.push(...r.fundamentos)
+    }
+    // abatimentos cuja data (grampeada) == b
+    for (const ab of abatimentos) {
+      const d = ab.data < venc ? venc : ab.data > dataBase ? dataBase : ab.data
+      if (d === b) {
+        const usa = Math.min(montante, ab.valor)
+        montante -= usa
+        const fwd = atualizarIntervalo({ principal: ab.valor, ini: d, fim: dataBase, indiceCorrecao, regimeJuros, series })
+        pagamentosAbatidos.push({
+          pagamentoId: ab.pagamentoId,
+          data: ab.data,
+          valorPago: arredonda2(ab.valor),
+          valorNaDataBase: arredonda2(ab.valor + fwd.correcao + fwd.juros),
+        })
+      }
+    }
+  }
+  // abatimentos com data <= venc: aplicados no ponto venc (marco 0)
+  for (const ab of abatimentos) {
+    const d = ab.data < venc ? venc : ab.data > dataBase ? dataBase : ab.data
+    if (d === venc) {
+      const usa = Math.min(montante, ab.valor)
+      montante -= usa
+      const fwd = atualizarIntervalo({ principal: ab.valor, ini: venc, fim: dataBase, indiceCorrecao, regimeJuros, series })
+      pagamentosAbatidos.push({
+        pagamentoId: ab.pagamentoId, data: ab.data,
+        valorPago: arredonda2(ab.valor),
+        valorNaDataBase: arredonda2(ab.valor + fwd.correcao + fwd.juros),
+      })
+    }
+  }
+
+  return {
+    parcelaId: parcela.id,
+    competencia: parcela.competencia.slice(0, 7),
+    vencimento: parcela.vencimento,
+    valorDevidoOriginal: arredonda2(parcela.valorDevido),
+    correcao: {
+      valor: arredonda2(corrAcc),
+      fator: Number((1 + corrAcc / parcela.valorDevido).toFixed(6)),
+      criterio: criteriosC.join(' + ') || '—',
+    },
+    juros: { valor: arredonda2(jurosAcc), criterio: criteriosJ.join(' + ') || '—' },
+    pagamentosAbatidos,
+    saldoAtualizado: arredonda2(montante),
+    fundamentos: dedup(funds),
+  }
+}
+
 /**
  * Atualiza `principal` de ini até fim (exclusivo). Ver Interfaces da Task 5.
  * Não arredonda.

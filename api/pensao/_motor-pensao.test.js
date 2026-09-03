@@ -102,7 +102,7 @@ describe('fatorMensal', () => {
   })
 })
 
-import { atualizarIntervalo, SERIE_DE_INDICE } from './_motor-pensao.js'
+import { atualizarIntervalo, SERIE_DE_INDICE, distribuirPagamentos, calcularLinhaParcela } from './_motor-pensao.js'
 
 // eslint-disable-next-line no-unused-vars
 const selicZero = {} // sem dias -> fatorSelic lança se intervalo>0; usar quando não deve ser chamado
@@ -188,5 +188,96 @@ describe('atualizarIntervalo — convencionado', () => {
       principal: 1000, ini: '2024-03-01', fim: '2024-04-01',
       indiceCorrecao: 'INPC', regimeJuros: '1_am_simples', series: {},
     })).toThrow()
+  })
+})
+
+const P = [
+  { id: 'p1', vencimento: '2024-01-10', valorDevido: 1000 },
+  { id: 'p2', vencimento: '2024-02-10', valorDevido: 1000 },
+  { id: 'p3', vencimento: '2024-03-10', valorDevido: 1000 },
+]
+
+describe('distribuirPagamentos', () => {
+  it('mais_antigas_primeiro: um pagamento de 1500 abate p1 inteira e 500 de p2', () => {
+    const d = distribuirPagamentos({
+      parcelasAtivas: P,
+      pagamentos: [{ id: 'g1', dataPagamento: '2024-04-01', valor: 1500, identificadoPara: null }],
+      regraImputacao: 'mais_antigas_primeiro',
+    })
+    expect(d.p1).toEqual([{ pagamentoId: 'g1', data: '2024-04-01', valor: 1000 }])
+    expect(d.p2).toEqual([{ pagamentoId: 'g1', data: '2024-04-01', valor: 500 }])
+    expect(d.p3).toBeUndefined()
+  })
+
+  it('identificado_para com excedente escorre como pagamento livre', () => {
+    const d = distribuirPagamentos({
+      parcelasAtivas: P,
+      pagamentos: [{ id: 'g1', dataPagamento: '2024-04-01', valor: 1300, identificadoPara: 'p2' }],
+      regraImputacao: 'mais_antigas_primeiro',
+    })
+    expect(d.p2).toEqual([{ pagamentoId: 'g1', data: '2024-04-01', valor: 1000 }])
+    expect(d.p1).toEqual([{ pagamentoId: 'g1', data: '2024-04-01', valor: 300 }]) // 300 escorreu p/ a mais antiga
+  })
+
+  it('mais_recentes_primeiro inverte a ordem', () => {
+    const d = distribuirPagamentos({
+      parcelasAtivas: P,
+      pagamentos: [{ id: 'g1', dataPagamento: '2024-04-01', valor: 1200, identificadoPara: null }],
+      regraImputacao: 'mais_recentes_primeiro',
+    })
+    expect(d.p3).toEqual([{ pagamentoId: 'g1', data: '2024-04-01', valor: 1000 }])
+    expect(d.p2).toEqual([{ pagamentoId: 'g1', data: '2024-04-01', valor: 200 }])
+  })
+
+  it('pro_rata rateia proporcional ao saldo nominal em aberto', () => {
+    const d = distribuirPagamentos({
+      parcelasAtivas: P,
+      pagamentos: [{ id: 'g1', dataPagamento: '2024-04-01', valor: 300, identificadoPara: null }],
+      regraImputacao: 'pro_rata',
+    })
+    expect(d.p1[0].valor).toBeCloseTo(100, 6)
+    expect(d.p2[0].valor).toBeCloseTo(100, 6)
+    expect(d.p3[0].valor).toBeCloseTo(100, 6)
+  })
+
+  it('pagamento além do total devido → bucket __excedente__', () => {
+    const d = distribuirPagamentos({
+      parcelasAtivas: P,
+      pagamentos: [{ id: 'g1', dataPagamento: '2024-04-01', valor: 5000, identificadoPara: null }],
+      regraImputacao: 'mais_antigas_primeiro',
+    })
+    expect(d.__excedente__[0].valor).toBeCloseTo(2000, 6)
+  })
+})
+
+describe('calcularLinhaParcela', () => {
+  const seriesNulas = { IPCA: { '2024-01-01': 0, '2024-02-01': 0, '2024-03-01': 0, '2024-04-01': 0, '2024-05-01': 0 } }
+
+  it('sem correção/juros e sem pagamento → saldo = valor devido', () => {
+    const linha = calcularLinhaParcela({
+      parcela: { id: 'p1', competencia: '2024-03-01', vencimento: '2024-03-10', valorDevido: 1000 },
+      abatimentos: [],
+      dataBase: '2024-03-10', // igual ao vencimento → nenhum trecho
+      dataCitacao: null,
+      indiceCorrecao: 'legal', regimeJuros: '1_am_simples', series: seriesNulas,
+    })
+    expect(linha.valorDevidoOriginal).toBe(1000)
+    expect(linha.correcao.valor).toBe(0)
+    expect(linha.juros.valor).toBe(0)
+    expect(linha.saldoAtualizado).toBe(1000)
+    expect(linha.pagamentosAbatidos).toEqual([])
+  })
+
+  it('pagamento parcial abate na data e o resto segue como saldo', () => {
+    const linha = calcularLinhaParcela({
+      parcela: { id: 'p1', competencia: '2024-03-01', vencimento: '2024-03-10', valorDevido: 1000 },
+      abatimentos: [{ pagamentoId: 'g1', data: '2024-03-20', valor: 400 }],
+      dataBase: '2024-04-01',
+      dataCitacao: null,
+      indiceCorrecao: 'IPCA', regimeJuros: '1_am_simples',
+      series: { IPCA: { '2024-03-01': 0, '2024-04-01': 0 } }, // zero → aritmética limpa
+    })
+    expect(linha.pagamentosAbatidos[0]).toMatchObject({ pagamentoId: 'g1', data: '2024-03-20', valorPago: 400 })
+    expect(linha.saldoAtualizado).toBe(600) // 1000 - 400, sem correção/juros
   })
 })
