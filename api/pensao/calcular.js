@@ -42,11 +42,19 @@ export async function processarCalculo({ supabase, casoId, dataBase, resolver = 
   const mensal = p.indice_correcao === 'legal' ? 'IPCA' : SERIE_DE_INDICE[p.indice_correcao]
   pedidos.push({ chave: mensal, codigo: SERIES[mensal], tipoRef: 'mes' })
 
-  const series = await resolver({ pedidos, inicioISO, fimISO, cachePort, fetchImpl })
+  let series
+  try {
+    series = await resolver({ pedidos, inicioISO, fimISO, cachePort, fetchImpl })
+  } catch {
+    throw erro('Índices indisponíveis no momento (falha ao consultar o Banco Central). Tente novamente em alguns minutos.', 503)
+  }
 
   // data-base não pode passar da última competência fechada
   const serieMensal = series[mensal] || {}
   const ultimaComp = Object.keys(serieMensal).sort().at(-1)
+  if (ultimaComp == null) {
+    throw erro(`Índice ${mensal} indisponível para o período. Tente novamente em alguns minutos.`, 503)
+  }
   if (comp(dataBase) > ultimaComp) {
     throw erro(`Índice fechado disponível apenas até ${brMes(ultimaComp)}. Ajuste a data-base.`, 422)
   }
@@ -56,10 +64,11 @@ export async function processarCalculo({ supabase, casoId, dataBase, resolver = 
   for (const c of meses) {
     if (serieMensal[c] == null) throw erro(`Índice ${mensal} indisponível para ${brMes(c)}. Tente novamente em alguns minutos.`, 503)
   }
-  // SELIC: cada mês do intervalo precisa de ≥ 1 dia
+  // SELIC: todo mês-calendário que [inicioISO, dataBase) toca precisa de ≥ 1 dia na série
   const selic = series.SELIC_DIARIA || {}
   const diasSelic = Object.keys(selic)
-  for (const c of meses.slice(0, -1).concat(comp(dataBase) === comp(inicioISO) ? [] : [comp(dataBase)])) {
+  const mesesSelic = mesesEntre(inicioISO, fimISO).filter((c) => c < fimISO)
+  for (const c of mesesSelic) {
     if (!diasSelic.some((d) => d.slice(0, 7) === c.slice(0, 7))) {
       throw erro(`Índice SELIC indisponível para ${brMes(c)}. Tente novamente em alguns minutos.`, 503)
     }

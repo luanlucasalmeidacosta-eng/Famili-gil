@@ -91,4 +91,31 @@ describe('processarCalculo', () => {
       cachePort: {}, fetchImpl: () => {},
     })).rejects.toMatchObject({ status: 422 })
   })
+
+  it('série mensal resolvida vazia → 503 (não 500)', async () => {
+    const tabelas = baseTabelas()
+    await expect(processarCalculo({
+      supabase: fakeSb(tabelas), casoId: 'c1', dataBase: '2024-09-30',
+      resolver: async () => ({ SELIC_DIARIA: seriesFull.SELIC_DIARIA, IPCA: {} }),
+      cachePort: {}, fetchImpl: () => {},
+    })).rejects.toMatchObject({ status: 503 })
+  })
+
+  it('resolver que lança → 503 (não 500)', async () => {
+    const tabelas = baseTabelas()
+    await expect(processarCalculo({
+      supabase: fakeSb(tabelas), casoId: 'c1', dataBase: '2024-09-30',
+      resolver: async () => { throw new Error('SGS fora do ar') },
+      cachePort: {}, fetchImpl: () => {},
+    })).rejects.toMatchObject({ status: 503 })
+  })
+
+  it('mês SELIC sem nenhum dia (mesmo mês de venc e data-base) → 503', async () => {
+    const tabelas = baseTabelas()
+    await expect(processarCalculo({
+      supabase: fakeSb(tabelas), casoId: 'c1', dataBase: '2024-09-20',
+      resolver: async () => ({ SELIC_DIARIA: {}, IPCA: { '2024-09-01': 0.5 } }),
+      cachePort: {}, fetchImpl: () => {},
+    })).rejects.toMatchObject({ status: 503 })
+  })
 })
