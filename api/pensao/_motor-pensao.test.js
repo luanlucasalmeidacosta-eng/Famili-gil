@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { arredonda2, diasCorridos, diasNoMes, FRONTEIRA_LEI, partesTrecho } from './_motor-pensao.js'
+import { arredonda2, diasCorridos, diasNoMes, FRONTEIRA_LEI, partesTrecho, fatorSelic, fatorMensal } from './_motor-pensao.js'
 
 describe('arredonda2', () => {
   it('meio para cima', () => {
@@ -51,5 +51,45 @@ describe('partesTrecho', () => {
   })
   it('FRONTEIRA_LEI é 2024-08-30', () => {
     expect(FRONTEIRA_LEI).toBe('2024-08-30')
+  })
+})
+
+describe('fatorSelic', () => {
+  const serie = { '2024-09-02': 0.04, '2024-09-03': 0.04, '2024-09-04': 0.04 } // 3 dias úteis a 0.04%
+
+  it('produto dos fatores diários no intervalo [ini, fim)', () => {
+    // (1.0004)^3 = 1.00120048...
+    expect(fatorSelic(serie, '2024-09-02', '2024-09-05')).toBeCloseTo(1.0004 ** 3, 10)
+  })
+  it('ini == fim → 1', () => {
+    expect(fatorSelic(serie, '2024-09-02', '2024-09-02')).toBe(1)
+  })
+  it('só conta datas dentro de [ini, fim) — fim é exclusivo', () => {
+    expect(fatorSelic(serie, '2024-09-02', '2024-09-03')).toBeCloseTo(1.0004, 10)
+  })
+  it('intervalo positivo sem nenhuma data na série → lança', () => {
+    expect(() => fatorSelic(serie, '2024-10-01', '2024-10-31')).toThrow()
+  })
+})
+
+describe('fatorMensal', () => {
+  const ipca = { '2024-09-01': 1.0, '2024-10-01': 1.0, '2024-11-01': 1.0 } // 1%/mês
+
+  it('mês cheio → (1 + m/100)', () => {
+    // de 2024-09-01 a 2024-10-01 = setembro inteiro
+    expect(fatorMensal(ipca, '2024-09-01', '2024-10-01')).toBeCloseTo(1.01, 10)
+  })
+  it('dois meses cheios compõem', () => {
+    expect(fatorMensal(ipca, '2024-09-01', '2024-11-01')).toBeCloseTo(1.01 * 1.01, 10)
+  })
+  it('mês parcial nas pontas usa 1/diasNoMes por dia', () => {
+    // de 2024-09-16 a 2024-10-01 = 15 dias de setembro (30 dias) → 1% * 15/30 = 0.5%
+    expect(fatorMensal(ipca, '2024-09-16', '2024-10-01')).toBeCloseTo(1.005, 10)
+  })
+  it('falta a competência de um mês tocado → lança', () => {
+    expect(() => fatorMensal(ipca, '2024-08-15', '2024-09-15')).toThrow() // falta 2024-08-01
+  })
+  it('ini == fim → 1', () => {
+    expect(fatorMensal(ipca, '2024-09-01', '2024-09-01')).toBe(1)
   })
 })

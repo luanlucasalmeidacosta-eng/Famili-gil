@@ -44,3 +44,64 @@ export function partesTrecho(vencISO, dataBaseISO) {
     { ini: FRONTEIRA_LEI, fim: dataBaseISO, regime: 'pos' },
   ]
 }
+
+/**
+ * Produto dos fatores diários da SELIC em [iniISO, fimISO).
+ * @throws se diasCorridos(ini,fim) > 0 e nenhuma data da série cai no intervalo.
+ */
+export function fatorSelic(serieDiaria, iniISO, fimISO) {
+  if (iniISO === fimISO) return 1
+  let fator = 1
+  let contou = 0
+  for (const [d, taxa] of Object.entries(serieDiaria)) {
+    if (d >= iniISO && d < fimISO) {
+      fator *= 1 + taxa / 100
+      contou += 1
+    }
+  }
+  if (contou === 0 && diasCorridos(iniISO, fimISO) > 0) {
+    throw new Error(`SELIC sem dados no intervalo ${iniISO}..${fimISO}`)
+  }
+  return fator
+}
+
+/** 1º dia do mês de uma data ISO. */
+function competenciaDe(iso) {
+  return `${iso.slice(0, 7)}-01`
+}
+
+/** Avança uma competência 'YYYY-MM-01' em 1 mês. */
+function proximaCompetencia(compISO) {
+  let [ano, mes] = compISO.split('-').map(Number)
+  mes += 1
+  if (mes > 12) { mes = 1; ano += 1 }
+  return `${ano}-${String(mes).padStart(2, '0')}-01`
+}
+
+/**
+ * Acumula um índice mensal em [iniISO, fimISO) com pró-rata die nas pontas.
+ * @throws se faltar a competência de qualquer mês tocado.
+ */
+export function fatorMensal(serieMensal, iniISO, fimISO) {
+  if (iniISO === fimISO) return 1
+  let fator = 1
+  let comp = competenciaDe(iniISO)
+  const compFim = competenciaDe(fimISO) // mês onde termina (exclusivo no dia, mas o mês pode ser tocado)
+  // percorre cada competência de comp até (e incluindo) o mês de fimISO, enquanto houver dias no trecho
+  while (comp <= compFim) {
+    const m = serieMensal[comp]
+    if (m == null) throw new Error(`índice mensal ausente para a competência ${comp}`)
+    const inicioMes = comp
+    const fimMes = proximaCompetencia(comp)
+    // interseção [ini,fim) ∩ [inicioMes, fimMes)
+    const a = iniISO > inicioMes ? iniISO : inicioMes
+    const b = fimISO < fimMes ? fimISO : fimMes
+    const dias = diasCorridos(a, b)
+    if (dias > 0) {
+      const dim = diasNoMes(comp)
+      fator *= dias >= dim ? 1 + m / 100 : 1 + (m / 100) * (dias / dim)
+    }
+    comp = fimMes
+  }
+  return fator
+}
