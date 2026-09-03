@@ -82,3 +82,22 @@ export async function buscarSerieNoSgs({ codigo, tipoRef, inicioISO, fimISO, fet
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([ref, valor]) => ({ ref, valor }))
 }
+
+/**
+ * Resolve as séries pedidas, cache-first.
+ * @returns {Promise<Record<string, Record<string, number>>>}
+ */
+export async function resolverSeries({ pedidos, inicioISO, fimISO, cachePort, fetchImpl }) {
+  const resultado = {}
+  for (const { chave, codigo, tipoRef } of pedidos) {
+    const doCache = (await cachePort.ler(chave, inicioISO, fimISO)) || {}
+    if (Object.keys(doCache).length > 0) {
+      resultado[chave] = { ...doCache }
+      continue
+    }
+    const doSgs = await buscarSerieNoSgs({ codigo, tipoRef, inicioISO, fimISO, fetchImpl })
+    await cachePort.gravar(chave, doSgs)
+    resultado[chave] = Object.fromEntries(doSgs.map(({ ref, valor }) => [ref, valor]))
+  }
+  return resultado
+}

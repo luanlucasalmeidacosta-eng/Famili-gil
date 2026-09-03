@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { SERIES, janelasDe10Anos, parseSgsJson, buscarSerieNoSgs } from './indices-bcb.js'
+import { SERIES, janelasDe10Anos, parseSgsJson, buscarSerieNoSgs, resolverSeries } from './indices-bcb.js'
 
 describe('SERIES', () => {
   it('tem os códigos SGS do spec', () => {
@@ -93,5 +93,45 @@ describe('buscarSerieNoSgs', () => {
     await expect(
       buscarSerieNoSgs({ codigo: 11, tipoRef: 'dia', inicioISO: '2024-01-01', fimISO: '2024-02-01', fetchImpl }),
     ).rejects.toThrow(/11/)
+  })
+})
+
+const pedidoIPCA = [{ chave: 'IPCA', codigo: 433, tipoRef: 'mes' }]
+
+describe('resolverSeries (cache-first)', () => {
+  it('cache cobre o intervalo → NÃO chama o SGS', async () => {
+    let fetchChamado = false
+    const fetchImpl = async () => { fetchChamado = true; return { ok: true, json: async () => [] } }
+    const cachePort = {
+      ler: async () => ({ '2024-07-01': 0.38, '2024-08-01': 0.02 }),
+      gravar: async () => { throw new Error('não deveria gravar') },
+    }
+    const out = await resolverSeries({
+      pedidos: pedidoIPCA, inicioISO: '2024-07-01', fimISO: '2024-08-31', cachePort, fetchImpl,
+    })
+    expect(fetchChamado).toBe(false)
+    expect(out).toEqual({ IPCA: { '2024-07-01': 0.38, '2024-08-01': 0.02 } })
+  })
+
+  it('cache vazio → busca no SGS, grava e retorna', async () => {
+    const gravados = []
+    const fetchImpl = async () => ({ ok: true, json: async () => [{ data: '01/08/2024', valor: '0.02' }] })
+    const cachePort = {
+      ler: async () => ({}),
+      gravar: async (chave, dados) => { gravados.push([chave, dados]) },
+    }
+    const out = await resolverSeries({
+      pedidos: pedidoIPCA, inicioISO: '2024-08-01', fimISO: '2024-08-31', cachePort, fetchImpl,
+    })
+    expect(out).toEqual({ IPCA: { '2024-08-01': 0.02 } })
+    expect(gravados).toEqual([['IPCA', [{ ref: '2024-08-01', valor: 0.02 }]]])
+  })
+
+  it('cache vazio + SGS fora do ar → propaga erro', async () => {
+    const fetchImpl = async () => ({ ok: false, status: 503, json: async () => ({}) })
+    const cachePort = { ler: async () => ({}), gravar: async () => {} }
+    await expect(
+      resolverSeries({ pedidos: pedidoIPCA, inicioISO: '2024-08-01', fimISO: '2024-08-31', cachePort, fetchImpl }),
+    ).rejects.toThrow(/433/)
   })
 })
