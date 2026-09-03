@@ -280,6 +280,20 @@ describe('calcularLinhaParcela', () => {
     expect(linha.pagamentosAbatidos[0]).toMatchObject({ pagamentoId: 'g1', data: '2024-03-20', valorPago: 400 })
     expect(linha.saldoAtualizado).toBe(600) // 1000 - 400, sem correção/juros
   })
+
+  it('dataBase == vencimento: abatimento aplicado UMA vez só', () => {
+    const linha = calcularLinhaParcela({
+      parcela: { id: 'p1', competencia: '2024-03-01', vencimento: '2024-03-10', valorDevido: 1000 },
+      abatimentos: [{ pagamentoId: 'g1', data: '2024-03-10', valor: 300 }],
+      dataBase: '2024-03-10',
+      dataCitacao: null,
+      indiceCorrecao: 'legal', regimeJuros: '1_am_simples',
+      series: { SELIC_DIARIA: selicFlat(0, '2024-03-01', '2024-03-12') },
+    })
+    expect(linha.pagamentosAbatidos).toHaveLength(1)
+    expect(linha.pagamentosAbatidos[0]).toMatchObject({ pagamentoId: 'g1', valorPago: 300 })
+    expect(linha.saldoAtualizado).toBe(700) // 1000 - 300, uma vez só
+  })
 })
 
 const seriesZero = { SELIC_DIARIA: selicFlat(0, '2024-01-01', '2024-04-02') }

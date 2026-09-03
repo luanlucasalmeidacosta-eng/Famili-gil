@@ -228,20 +228,20 @@ export function calcularLinhaParcela({
       if (r.criterioCorrecao !== '—') criteriosC.push(r.criterioCorrecao)
       if (r.criterioJuros !== '—') criteriosJ.push(r.criterioJuros)
       funds.push(...r.fundamentos)
-    }
-    // abatimentos cuja data (grampeada) == b
-    for (const ab of abatimentos) {
-      const d = ab.data < venc ? venc : ab.data > dataBase ? dataBase : ab.data
-      if (d === b) {
-        const usa = Math.min(montante, ab.valor)
-        montante -= usa
-        const fwd = atualizarIntervalo({ principal: ab.valor, ini: d, fim: dataBase, indiceCorrecao, regimeJuros, series })
-        pagamentosAbatidos.push({
-          pagamentoId: ab.pagamentoId,
-          data: ab.data,
-          valorPago: arredonda2(ab.valor),
-          valorNaDataBase: arredonda2(ab.valor + fwd.correcao + fwd.juros),
-        })
+      // abatimentos cuja data (grampeada) == b
+      for (const ab of abatimentos) {
+        const d = ab.data < venc ? venc : ab.data > dataBase ? dataBase : ab.data
+        if (d === b) {
+          const usa = Math.min(montante, ab.valor)
+          montante -= usa
+          const fwd = atualizarIntervalo({ principal: ab.valor, ini: d, fim: dataBase, indiceCorrecao, regimeJuros, series })
+          pagamentosAbatidos.push({
+            pagamentoId: ab.pagamentoId,
+            data: ab.data,
+            valorPago: arredonda2(ab.valor),
+            valorNaDataBase: arredonda2(ab.valor + fwd.correcao + fwd.juros),
+          })
+        }
       }
     }
   }
