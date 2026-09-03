@@ -274,17 +274,15 @@ describe('calcularLinhaParcela', () => {
       abatimentos: [{ pagamentoId: 'g1', data: '2024-03-20', valor: 400 }],
       dataBase: '2024-04-01',
       dataCitacao: null,
-      indiceCorrecao: 'IPCA', regimeJuros: '1_am_simples',
-      series: { IPCA: { '2024-03-01': 0, '2024-04-01': 0 } }, // zero → aritmética limpa
+      indiceCorrecao: 'legal', regimeJuros: '1_am_simples',
+      series: { SELIC_DIARIA: selicFlat(0, '2024-03-01', '2024-04-02') }, // legal + SELIC 0 → sem correção/juros
     })
     expect(linha.pagamentosAbatidos[0]).toMatchObject({ pagamentoId: 'g1', data: '2024-03-20', valorPago: 400 })
     expect(linha.saldoAtualizado).toBe(600) // 1000 - 400, sem correção/juros
   })
 })
 
-const seriesZero = {
-  IPCA: Object.fromEntries(['2024-01', '2024-02', '2024-03', '2024-04'].map((m) => [`${m}-01`, 0])),
-}
+const seriesZero = { SELIC_DIARIA: selicFlat(0, '2024-01-01', '2024-04-02') }
 const parcelas3 = [
   { id: 'p1', competencia: '2024-01-01', vencimento: '2024-01-10', valorDevido: 1000, ativa: true },
   { id: 'p2', competencia: '2024-02-01', vencimento: '2024-02-10', valorDevido: 1000, ativa: true },
@@ -296,7 +294,7 @@ describe('calcularMemoria', () => {
     parcelas: parcelas3,
     pagamentos: [{ id: 'g1', dataPagamento: '2024-03-01', valor: 500, identificadoPara: null }],
     dataBase: '2024-04-01', dataCitacao: null,
-    indiceCorrecao: 'IPCA', regraImputacao: 'mais_antigas_primeiro',
+    indiceCorrecao: 'legal', regraImputacao: 'mais_antigas_primeiro',
     regimeJurosConvencionado: '1_am_simples', series: seriesZero,
   }
 
