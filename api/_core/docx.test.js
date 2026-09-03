@@ -20,7 +20,6 @@ describe('pensaoParaDocx', () => {
     expect(bytes.length).toBeGreaterThan(1000)
     expect(bytes[0]).toBe(0x50) // 'P'
     expect(bytes[1]).toBe(0x4b) // 'K'
-    const txt = Buffer.from(bytes).toString('latin1')
     // o document.xml fica comprimido no zip; validação leve: o pacote existe.
     // teste de conteúdo real fica no teste de integração da rota exportar (Task 13).
   })
