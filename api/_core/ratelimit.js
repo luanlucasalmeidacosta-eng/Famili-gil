@@ -17,15 +17,20 @@ const baldes = new Map()
  */
 export function rateLimit(chave, limite, janelaMs) {
   const agora = Date.now()
+
+  // limpeza oportunista para o Map não crescer sem limite — roda em qualquer
+  // caminho (inclusive o de chave nova), senão um fluxo de muitas chaves
+  // distintas de 1 hit cada nunca dispara a poda.
+  if (baldes.size > 5000) {
+    for (const [k, v] of baldes) if (agora >= v.reset) baldes.delete(k)
+  }
+
   const b = baldes.get(chave)
   if (!b || agora >= b.reset) {
     baldes.set(chave, { n: 1, reset: agora + janelaMs })
     return { ok: true }
   }
   b.n += 1
-  if (baldes.size > 5000) {
-    for (const [k, v] of baldes) if (agora >= v.reset) baldes.delete(k)
-  }
   return b.n <= limite ? { ok: true } : { ok: false, retryMs: b.reset - agora }
 }
 

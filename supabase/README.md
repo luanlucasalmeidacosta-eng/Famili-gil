@@ -22,5 +22,6 @@ supabase db push
 
 ## Env
 
-- Front (Vercel + `.env` local): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
-- Seed local apenas: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (nunca na Vercel).
+- **Browser** (`VITE_` prefix, no painel da Vercel e no `.env` local): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+- **Servidor** (sem prefixo, no painel da Vercel e no `.env` local para `vercel dev`): `SUPABASE_URL`, `SUPABASE_ANON_KEY` — a mesma URL e a mesma anon key públicas, sem o prefixo `VITE_`. As funções em `api/` as usam para criar o client por request.
+- **Seed local apenas** (nunca na Vercel): `SUPABASE_SERVICE_ROLE_KEY` (+ reaproveita `SUPABASE_URL`).

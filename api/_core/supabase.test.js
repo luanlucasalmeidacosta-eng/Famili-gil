@@ -29,4 +29,14 @@ describe('clienteDoRequest', () => {
     expect(userToken).toBe('abc.def.ghi')
     expect(typeof supabase.from).toBe('function')
   })
+
+  it('sem SUPABASE_URL/ANON_KEY e sem cfg → lança 500', () => {
+    const req = new Request('https://x', { headers: { Authorization: 'Bearer abc.def.ghi' } })
+    try {
+      clienteDoRequest(req) // sem cfg, e as env não estão setadas no ambiente de teste
+      throw new Error('deveria ter lançado')
+    } catch (e) {
+      expect(e.status).toBe(500)
+    }
+  })
 })

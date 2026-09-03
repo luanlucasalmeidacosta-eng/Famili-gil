@@ -85,6 +85,15 @@ export async function buscarSerieNoSgs({ codigo, tipoRef, inicioISO, fimISO, fet
 
 /**
  * Resolve as séries pedidas, cache-first.
+ *
+ * ATENÇÃO (v1): a detecção de "cache incompleto" é grossa — se o cache tem
+ * QUALQUER ponto para a chave no intervalo, ele é usado como está e o SGS
+ * NÃO é consultado. Portanto o retorno PODE não cobrir todas as competências
+ * de [inicioISO, fimISO] se o cache estiver desatualizado. Quem chama (ex.:
+ * api/pensao/calcular.js no Plano 02) DEVE verificar que toda competência
+ * necessária está presente e responder erro em caso de lacuna — nunca
+ * calcular com série furada (requisito inviolável: "índice ausente = erro").
+ *
  * @returns {Promise<Record<string, Record<string, number>>>}
  */
 export async function resolverSeries({ pedidos, inicioISO, fimISO, cachePort, fetchImpl }) {

@@ -30,6 +30,11 @@ export function clienteDoRequest(request, cfg = {}) {
   }
   const url = cfg.url || process.env.SUPABASE_URL
   const anonKey = cfg.anonKey || process.env.SUPABASE_ANON_KEY
+  if (!url || !anonKey) {
+    const err = new Error('SUPABASE_URL / SUPABASE_ANON_KEY não configurados no servidor')
+    err.status = 500
+    throw err
+  }
   const supabase = createClient(url, anonKey, {
     global: { headers: { Authorization: `Bearer ${userToken}` } },
     auth: { persistSession: false, autoRefreshToken: false },

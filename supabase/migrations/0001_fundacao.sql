@@ -19,6 +19,17 @@ alter table public.casos enable row level security;
 create policy casos_dono on public.casos
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
+create or replace function public.casos_tipo_imutavel() returns trigger
+  language plpgsql as $$
+begin
+  if new.tipo is distinct from old.tipo then
+    raise exception 'casos.tipo é imutável após a criação';
+  end if;
+  return new;
+end $$;
+create trigger casos_tipo_imutavel before update on public.casos
+  for each row execute function public.casos_tipo_imutavel();
+
 -- ─────────────────────────  documentos_caso  ───────────────────────
 create table public.documentos_caso (
   id           uuid primary key default gen_random_uuid(),
@@ -50,7 +61,7 @@ create table public.indices_cache (
 alter table public.indices_cache enable row level security;
 -- leitura para qualquer usuário autenticado; escrita só via service_role (bypassa RLS)
 create policy indices_leitura on public.indices_cache
-  for select using (auth.role() = 'authenticated');
+  for select to authenticated using (true);
 
 -- ───────────────────────  tabelas vetoriais (Lu — vazias)  ─────────
 create table public.pensao_legislacao_chunks (
@@ -86,7 +97,7 @@ insert into storage.buckets (id, name, public) values ('documentos', 'documentos
   on conflict (id) do nothing;
 create policy documentos_bucket_dono on storage.objects
   for all using (
-    bucket_id = 'documentos' and owner = auth.uid()
+    bucket_id = 'documentos' and owner_id = (select auth.uid())::text
   ) with check (
-    bucket_id = 'documentos' and owner = auth.uid()
+    bucket_id = 'documentos' and owner_id = (select auth.uid())::text
   );
