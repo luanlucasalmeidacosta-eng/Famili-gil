@@ -43,8 +43,8 @@ describe('criarCachePort', () => {
     expect(sb.calls.upsert[0].opts).toMatchObject({ onConflict: 'serie,ref' })
   })
 
-  it('gravar propaga erro', async () => {
+  it('gravar com erro: não lança, apenas segue (best-effort)', async () => {
     const sb = fakeSupabase({ upsertError: { message: 'boom' } })
-    await expect(criarCachePort(sb).gravar('IPCA', [{ ref: '2024-09-01', valor: 1 }])).rejects.toThrow('boom')
+    await expect(criarCachePort(sb).gravar('IPCA', [{ ref: '2024-09-01', valor: 1 }])).resolves.toBeUndefined()
   })
 })

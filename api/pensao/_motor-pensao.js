@@ -58,9 +58,12 @@ export function fatorSelic(serieDiaria, iniISO, fimISO) {
   if (iniISO === fimISO) return 1
   let fator = 1
   let contou = 0
-  for (const [d, taxa] of Object.entries(serieDiaria)) {
+  // ordena as chaves: jsonb (series_snapshot) não preserva ordem de inserção,
+  // e multiplicação de float não é associativa — sem isso, recalcular a
+  // partir do snapshot poderia dar um resultado ligeiramente diferente.
+  for (const d of Object.keys(serieDiaria).sort()) {
     if (d >= iniISO && d < fimISO) {
-      fator *= 1 + taxa / 100
+      fator *= 1 + serieDiaria[d] / 100
       contou += 1
     }
   }
@@ -117,11 +120,6 @@ const FUND_POS = ['Lei 14.905/2024 (arts. 389 e 406 do CC)', 'CC, art. 397']
 const FUND_CONV = ['título executivo', 'CC, art. 397']
 
 function brData(iso) {
-  const [a, m, d] = iso.split('-')
-  return `${d}/${m}/${a}`
-}
-
-function brData2(iso) {
   const [a, m, d] = iso.split('-')
   return `${d}/${m}/${a}`
 }
@@ -200,7 +198,11 @@ export function distribuirPagamentos({ parcelasAtivas, pagamentos, regraImputaca
 }
 
 export function calcularLinhaParcela({
-  parcela, abatimentos, dataBase, _dataCitacao, indiceCorrecao, regimeJuros, series,
+  // dataCitacao não é usada aqui (o filtro/alerta de citação é aplicado em
+  // calcularMemoria); mantido no destructuring para casar a assinatura com o
+  // resto do código-base que chama esta função com esse nome de parâmetro.
+  // eslint-disable-next-line no-unused-vars
+  parcela, abatimentos, dataBase, dataCitacao, indiceCorrecao, regimeJuros, series,
 }) {
   const venc = parcela.vencimento
   // datas de corte: as dos abatimentos, "grampeadas" em [venc, dataBase], ordenadas e únicas
@@ -217,6 +219,23 @@ export function calcularLinhaParcela({
   const funds = []
   const pagamentosAbatidos = []
 
+  // abatimentos com data <= venc: aplicados ANTES de qualquer acréscimo (no
+  // próprio venc, marco 0) — senão o pagamento pontual/antecipado acabaria
+  // sendo descontado só DEPOIS de acrescido o período inteiro até dataBase.
+  for (const ab of abatimentos) {
+    const d = ab.data < venc ? venc : ab.data > dataBase ? dataBase : ab.data
+    if (d === venc) {
+      const usa = Math.min(montante, ab.valor)
+      montante -= usa
+      const fwd = atualizarIntervalo({ principal: ab.valor, ini: venc, fim: dataBase, indiceCorrecao, regimeJuros, series })
+      pagamentosAbatidos.push({
+        pagamentoId: ab.pagamentoId, data: ab.data,
+        valorPago: arredonda2(ab.valor),
+        valorNaDataBase: arredonda2(ab.valor + fwd.correcao + fwd.juros),
+      })
+    }
+  }
+
   for (let i = 0; i < marcos.length - 1; i++) {
     const a = marcos[i]
     const b = marcos[i + 1]
@@ -228,7 +247,7 @@ export function calcularLinhaParcela({
       if (r.criterioCorrecao !== '—') criteriosC.push(r.criterioCorrecao)
       if (r.criterioJuros !== '—') criteriosJ.push(r.criterioJuros)
       funds.push(...r.fundamentos)
-      // abatimentos cuja data (grampeada) == b
+      // abatimentos cuja data (grampeada) == b (nunca === venc, tratados acima)
       for (const ab of abatimentos) {
         const d = ab.data < venc ? venc : ab.data > dataBase ? dataBase : ab.data
         if (d === b) {
@@ -245,20 +264,6 @@ export function calcularLinhaParcela({
       }
     }
   }
-  // abatimentos com data <= venc: aplicados no ponto venc (marco 0)
-  for (const ab of abatimentos) {
-    const d = ab.data < venc ? venc : ab.data > dataBase ? dataBase : ab.data
-    if (d === venc) {
-      const usa = Math.min(montante, ab.valor)
-      montante -= usa
-      const fwd = atualizarIntervalo({ principal: ab.valor, ini: venc, fim: dataBase, indiceCorrecao, regimeJuros, series })
-      pagamentosAbatidos.push({
-        pagamentoId: ab.pagamentoId, data: ab.data,
-        valorPago: arredonda2(ab.valor),
-        valorNaDataBase: arredonda2(ab.valor + fwd.correcao + fwd.juros),
-      })
-    }
-  }
 
   return {
     parcelaId: parcela.id,
@@ -267,7 +272,7 @@ export function calcularLinhaParcela({
     valorDevidoOriginal: arredonda2(parcela.valorDevido),
     correcao: {
       valor: arredonda2(corrAcc),
-      fator: Number((1 + corrAcc / parcela.valorDevido).toFixed(6)),
+      fator: Number((1 + corrAcc / (parcela.valorDevido || 1)).toFixed(6)),
       criterio: criteriosC.join(' + ') || '—',
     },
     juros: { valor: arredonda2(jurosAcc), criterio: criteriosJ.join(' + ') || '—' },
@@ -372,16 +377,60 @@ export function calcularMemoria({
     regraImputacao,
   })
 
-  const linhas = ativas.map((p) => {
+  const abatimentosPorParcela = new Map(ativas.map((p) => {
     const abat = [...(dist[p.id] || [])].sort((a, b) =>
       a.data < b.data ? -1 : a.data > b.data ? 1
         : a.pagamentoId < b.pagamentoId ? -1 : a.pagamentoId > b.pagamentoId ? 1 : 0)
-    return calcularLinhaParcela({
-      parcela: { id: p.id, competencia: p.competencia, vencimento: p.vencimento, valorDevido: p.valorDevido },
-      abatimentos: abat,
-      dataBase, dataCitacao, indiceCorrecao, regimeJuros, series,
-    })
-  })
+    return [p.id, abat]
+  }))
+
+  const linhas = ativas.map((p) => calcularLinhaParcela({
+    parcela: { id: p.id, competencia: p.competencia, vencimento: p.vencimento, valorDevido: p.valorDevido },
+    abatimentos: abatimentosPorParcela.get(p.id),
+    dataBase, dataCitacao, indiceCorrecao, regimeJuros, series,
+  }))
+
+  // Excedente (pagamentos além do valor nominal de todas as parcelas) não
+  // pode ser descartado enquanto houver saldo residual (juros/correção não
+  // cobertos pelo abatimento nominal) em alguma parcela ativa — o devedor já
+  // entregou o dinheiro; falta só decidir contra qual saldo residual aplicar.
+  // distribuirPagamentos só cria __excedente__ depois que TODAS as parcelas
+  // já receberam seu abatimento nominal cheio, então aqui é só cobrir o que
+  // sobrou de juros/correção com o que sobrou de dinheiro. Ordem: mesma regra
+  // de regraImputacao (pro_rata usa a ordem de vencimento como simplificação
+  // — o rateio proporcional já aconteceu na 1ª rodada, o resíduo é pequeno).
+  const excedenteBruto = dist.__excedente__ || []
+  let excedenteResidual = 0
+  if (excedenteBruto.length) {
+    const pool = excedenteBruto.map((e) => ({ ...e }))
+    const ordemResidual = regraImputacao === 'mais_recentes_primeiro' ? [...ativas].reverse() : ativas
+
+    for (const p of ordemResidual) {
+      const idx = linhas.findIndex((l) => l.parcelaId === p.id)
+      if (idx === -1 || linhas[idx].saldoAtualizado <= 0) continue
+      let falta = linhas[idx].saldoAtualizado
+      const extras = []
+      for (const exc of pool) {
+        if (falta <= 1e-9) break
+        if (exc.valor <= 0) continue
+        const usa = Math.min(falta, exc.valor)
+        extras.push({ pagamentoId: exc.pagamentoId, data: exc.data, valor: usa })
+        exc.valor -= usa
+        falta -= usa
+      }
+      if (extras.length) {
+        const abatCompletos = [...abatimentosPorParcela.get(p.id), ...extras].sort((a, b) =>
+          a.data < b.data ? -1 : a.data > b.data ? 1
+            : a.pagamentoId < b.pagamentoId ? -1 : a.pagamentoId > b.pagamentoId ? 1 : 0)
+        linhas[idx] = calcularLinhaParcela({
+          parcela: { id: p.id, competencia: p.competencia, vencimento: p.vencimento, valorDevido: p.valorDevido },
+          abatimentos: abatCompletos,
+          dataBase, dataCitacao, indiceCorrecao, regimeJuros, series,
+        })
+      }
+    }
+    excedenteResidual = pool.reduce((s, e) => s + Math.max(0, e.valor), 0)
+  }
 
   const somaOriginal = arredonda2(linhas.reduce((s, l) => s + l.valorDevidoOriginal, 0))
   const somaCorrecao = arredonda2(linhas.reduce((s, l) => s + l.correcao.valor, 0))
@@ -396,14 +445,14 @@ export function calcularMemoria({
     for (const p of ativas) {
       if (p.vencimento < dataCitacao) {
         alertas.push(
-          `Parcela ${p.competencia.slice(0, 7)} vence antes da citação (${brData2(dataCitacao)}); ` +
+          `Parcela ${p.competencia.slice(0, 7)} vence antes da citação (${brData(dataCitacao)}); ` +
           `confira a exigibilidade neste feito (Lei 5.478/68, art. 13, §2º).`,
         )
       }
     }
   }
-  if (dist.__excedente__ || saldo < 0) {
-    alertas.push(`Os pagamentos superam o débito atualizado em R$ ${arredonda2(Math.abs(saldo))} na data-base.`)
+  if (excedenteResidual > 1e-9) {
+    alertas.push(`Os pagamentos superam o débito atualizado em R$ ${arredonda2(excedenteResidual)} na data-base.`)
   }
 
   return {

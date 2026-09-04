@@ -23,4 +23,20 @@ describe('pensaoParaDocx', () => {
     // o document.xml fica comprimido no zip; validação leve: o pacote existe.
     // teste de conteúdo real fica no teste de integração da rota exportar (Task 13).
   })
+
+  it('gera .docx válido com parametros_snapshot presente e também quando ausente', async () => {
+    const comSnapshot = {
+      ...memoria,
+      parametros_snapshot: { parametros: { indice_correcao: 'legal', regra_imputacao: 'mais_antigas_primeiro' } },
+    }
+    const bytesCom = await pensaoParaDocx(comSnapshot, caso)
+    expect(bytesCom.length).toBeGreaterThan(1000)
+    expect(bytesCom[0]).toBe(0x50)
+    expect(bytesCom[1]).toBe(0x4b)
+
+    const bytesSem = await pensaoParaDocx(memoria, caso) // memoria sem parametros_snapshot
+    expect(bytesSem.length).toBeGreaterThan(1000)
+    expect(bytesSem[0]).toBe(0x50)
+    expect(bytesSem[1]).toBe(0x4b)
+  })
 })

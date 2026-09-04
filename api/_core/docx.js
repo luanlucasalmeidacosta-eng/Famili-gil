@@ -14,6 +14,16 @@ export async function pensaoParaDocx(memoria, caso) {
     new Paragraph(`Exequente: ${caso.parte_a || '—'}   Executado: ${caso.parte_b || '—'}`),
     new Paragraph(`Processo: ${caso.numero_processo || '—'}   Data-base: ${memoria.data_base}   Versão: ${memoria.versao}`),
     new Paragraph('Critério de arredondamento: 2 casas, meio para cima, por parcela. Atualização pró-rata die.'),
+    new Paragraph((() => {
+      const p = memoria.parametros_snapshot?.parametros
+      if (!p) return 'Critérios aplicados: —'
+      const indice = p.indice_correcao === 'legal'
+        ? 'legal (SELIC até 29/08/2024; IPCA + SELIC líquida do IPCA a partir de 30/08/2024)'
+        : p.indice_correcao
+      const imputacao = { mais_antigas_primeiro: 'parcelas mais antigas primeiro', mais_recentes_primeiro: 'parcelas mais recentes primeiro', pro_rata: 'pró-rata entre as parcelas em aberto' }[p.regra_imputacao] || p.regra_imputacao
+      const regimeJuros = p.indice_correcao === 'legal' ? undefined : { '1_am_simples': '1% ao mês, simples', '1_am_capitalizado': '1% ao mês, capitalizado', selic: 'SELIC' }[p.regime_juros_convencionado]
+      return `Critérios aplicados: índice de correção ${indice}; imputação de pagamento: ${imputacao}` + (regimeJuros ? `; juros do índice convencionado: ${regimeJuros}.` : '.')
+    })()),
     new Paragraph(''),
   ]
 

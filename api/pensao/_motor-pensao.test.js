@@ -294,6 +294,41 @@ describe('calcularLinhaParcela', () => {
     expect(linha.pagamentosAbatidos[0]).toMatchObject({ pagamentoId: 'g1', valorPago: 300 })
     expect(linha.saldoAtualizado).toBe(700) // 1000 - 300, uma vez só
   })
+
+  it('pagamento EXATAMENTE no vencimento: sem acréscimo algum (não acrescenta o período inteiro antes de abater)', () => {
+    const series = { SELIC_DIARIA: selicFlat(0.04, '2024-01-01', '2024-06-02') }
+    const linha = calcularLinhaParcela({
+      parcela: { id: 'p1', competencia: '2024-01-01', vencimento: '2024-01-10', valorDevido: 1000 },
+      abatimentos: [{ pagamentoId: 'g1', data: '2024-01-10', valor: 1000 }],
+      dataBase: '2024-06-01', dataCitacao: null,
+      indiceCorrecao: 'legal', regimeJuros: '1_am_simples', series,
+    })
+    expect(linha.saldoAtualizado).toBe(0)
+    expect(linha.juros.valor).toBe(0)
+  })
+
+  it('pagamento ANTES do vencimento: idem, sem acréscimo (não deve custar mais caro que pagar em dia)', () => {
+    const series = { SELIC_DIARIA: selicFlat(0.04, '2024-01-01', '2024-06-02') }
+    const linha = calcularLinhaParcela({
+      parcela: { id: 'p1', competencia: '2024-01-01', vencimento: '2024-01-10', valorDevido: 1000 },
+      abatimentos: [{ pagamentoId: 'g1', data: '2024-01-05', valor: 1000 }],
+      dataBase: '2024-06-01', dataCitacao: null,
+      indiceCorrecao: 'legal', regimeJuros: '1_am_simples', series,
+    })
+    expect(linha.saldoAtualizado).toBe(0)
+  })
+
+  it('pagamento 1 dia DEPOIS do vencimento: acresce só 1 dia, e deve custar mais que pagar em dia (nunca menos)', () => {
+    const series = { SELIC_DIARIA: selicFlat(0.04, '2024-01-01', '2024-06-02') }
+    const linha = calcularLinhaParcela({
+      parcela: { id: 'p1', competencia: '2024-01-01', vencimento: '2024-01-10', valorDevido: 1000 },
+      abatimentos: [{ pagamentoId: 'g1', data: '2024-01-11', valor: 1000 }],
+      dataBase: '2024-06-01', dataCitacao: null,
+      indiceCorrecao: 'legal', regimeJuros: '1_am_simples', series,
+    })
+    expect(linha.saldoAtualizado).toBeCloseTo(0.42, 2)
+    expect(linha.saldoAtualizado).toBeGreaterThan(0)
+  })
 })
 
 const seriesZero = { SELIC_DIARIA: selicFlat(0, '2024-01-01', '2024-04-02') }
@@ -336,5 +371,25 @@ describe('calcularMemoria', () => {
 
   it('determinístico: dois runs → JSON idêntico', () => {
     expect(JSON.stringify(calcularMemoria(entrada))).toBe(JSON.stringify(calcularMemoria(entrada)))
+  })
+
+  it('overpayment: excedente cobre o residual de juros; saldo zera; alerta mostra a SOBRA real, não o residual não-coberto', () => {
+    const series = { SELIC_DIARIA: selicFlat(0.04, '2024-01-01', '2024-06-02') }
+    const m = calcularMemoria({
+      parcelas: [
+        { id: 'p1', competencia: '2024-01-01', vencimento: '2024-01-10', valorDevido: 1000, ativa: true },
+        { id: 'p2', competencia: '2024-02-01', vencimento: '2024-02-10', valorDevido: 1000, ativa: true },
+      ],
+      pagamentos: [{ id: 'g1', dataPagamento: '2024-03-01', valor: 9000, identificadoPara: null }],
+      dataBase: '2024-06-01', dataCitacao: null,
+      indiceCorrecao: 'legal', regraImputacao: 'mais_antigas_primeiro',
+      regimeJurosConvencionado: '1_am_simples', series,
+    })
+    expect(m.totais.saldo).toBe(0)
+    expect(m.linhas.every((l) => l.saldoAtualizado === 0)).toBe(true)
+    expect(m.alertas.some((a) => a.includes('superam o débito'))).toBe(true)
+    const alerta = m.alertas.find((a) => a.includes('superam o débito'))
+    const valorNoAlerta = Number(alerta.match(/R\$ ([\d.]+)/)[1])
+    expect(valorNoAlerta).toBeGreaterThan(6900) // a sobra real (~6970), não o residual (~29)
   })
 })

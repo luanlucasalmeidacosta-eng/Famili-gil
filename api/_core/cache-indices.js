@@ -25,7 +25,14 @@ export function criarCachePort(supabase) {
       if (!linhas.length) return
       const rows = linhas.map(({ ref, valor }) => ({ serie: chave, ref, valor }))
       const { error } = await supabase.from('indices_cache').upsert(rows, { onConflict: 'serie,ref' })
-      if (error) throw new Error(`cache gravar ${chave}: ${error.message}`)
+      if (error) {
+        // Best-effort: os dados já foram buscados com sucesso no BCB e seguem
+        // em uso nesta requisição; só o cache para a PRÓXIMA fica sem
+        // atualizar (ex.: RLS nega escrita a authenticated — a tabela é
+        // pensada pra ser escrita pelo seed/service_role). Não falhar a
+        // requisição por isso.
+        console.warn(`cache-indices: falha ao gravar ${chave} (seguindo sem cache): ${error.message}`)
+      }
     },
   }
 }
