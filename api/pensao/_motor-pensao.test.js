@@ -390,7 +390,25 @@ describe('calcularMemoria', () => {
     expect(m.alertas.some((a) => a.includes('superam o débito'))).toBe(true)
     const alerta = m.alertas.find((a) => a.includes('superam o débito'))
     const valorNoAlerta = Number(alerta.match(/R\$ ([\d.]+)/)[1])
-    expect(valorNoAlerta).toBeCloseTo(6971.36, 1)
+    expect(valorNoAlerta).toBeCloseTo(7232.64, 1)
+  })
+
+  it('alerta de excedente reflete o valor NA DATA-BASE, mesmo quando o excedente ficou anos parado', () => {
+    const series = { SELIC_DIARIA: selicFlat(0.04, '2020-01-01', '2025-01-02') }
+    const m = calcularMemoria({
+      parcelas: [
+        { id: 'p1', competencia: '2020-01-01', vencimento: '2020-01-10', valorDevido: 1000, ativa: true },
+        { id: 'p2', competencia: '2020-02-01', vencimento: '2020-02-10', valorDevido: 1000, ativa: true },
+      ],
+      pagamentos: [{ id: 'g1', dataPagamento: '2021-03-01', valor: 9000, identificadoPara: null }],
+      dataBase: '2024-08-01', dataCitacao: null,
+      indiceCorrecao: 'legal', regraImputacao: 'mais_antigas_primeiro',
+      regimeJurosConvencionado: '1_am_simples', series,
+    })
+    const alerta = m.alertas.find((a) => a.includes('superam o débito'))
+    const valorNoAlerta = Number(alerta.match(/R\$ ([\d.]+)/)[1])
+    // controller verificou independentemente: ~R$10.962,70 pra este cenário exato
+    expect(valorNoAlerta).toBeCloseTo(10962.7, 0)
   })
 
   it('overpayment com data do excedente BEM anterior à data-base: totais reconciliam e o alerta bate com a sobra real', () => {

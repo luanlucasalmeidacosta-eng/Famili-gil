@@ -438,7 +438,13 @@ export function calcularMemoria({
         })
       }
     }
-    excedenteResidual = pool.reduce((s, e) => s + Math.max(0, e.valor), 0)
+    // valorado em dataBase (é dinheiro que ficou parado desde exc.data) —
+    // senão o alerta "na data-base" mostraria um valor de outra data.
+    excedenteResidual = pool.reduce((s, e) => {
+      if (e.valor <= 0) return s
+      const fwd = atualizarIntervalo({ principal: e.valor, ini: e.data, fim: dataBase, indiceCorrecao, regimeJuros, series })
+      return s + e.valor + fwd.correcao + fwd.juros
+    }, 0)
   }
 
   const somaOriginal = arredonda2(linhas.reduce((s, l) => s + l.valorDevidoOriginal, 0))
