@@ -408,15 +408,24 @@ export function calcularMemoria({
     for (const p of ordemResidual) {
       const idx = linhas.findIndex((l) => l.parcelaId === p.id)
       if (idx === -1 || linhas[idx].saldoAtualizado <= 0) continue
-      let falta = linhas[idx].saldoAtualizado
+      // `saldoAtualizado` está valorado EM dataBase. O excedente é dinheiro
+      // parado na data do próprio pagamento (exc.data), quase sempre anterior
+      // a dataBase — descontamos o residual pra "quanto isso vale na data do
+      // excedente" antes de comparar, senão sub/sobre-corrigimos o quanto
+      // realmente falta (esse dinheiro ainda vai render entre exc.data e
+      // dataBase, exatamente como um abatimento comum).
+      let faltaNaDataBase = linhas[idx].saldoAtualizado
       const extras = []
       for (const exc of pool) {
-        if (falta <= 1e-9) break
+        if (faltaNaDataBase <= 1e-9) break
         if (exc.valor <= 0) continue
-        const usa = Math.min(falta, exc.valor)
+        const fwd = atualizarIntervalo({ principal: 1, ini: exc.data, fim: dataBase, indiceCorrecao, regimeJuros, series })
+        const fatorFwd = 1 + fwd.correcao + fwd.juros
+        const faltaNaDataDoExcedente = faltaNaDataBase / fatorFwd
+        const usa = Math.min(faltaNaDataDoExcedente, exc.valor)
         extras.push({ pagamentoId: exc.pagamentoId, data: exc.data, valor: usa })
         exc.valor -= usa
-        falta -= usa
+        faltaNaDataBase -= usa * fatorFwd
       }
       if (extras.length) {
         const abatCompletos = [...abatimentosPorParcela.get(p.id), ...extras].sort((a, b) =>

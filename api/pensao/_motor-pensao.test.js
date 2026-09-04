@@ -390,6 +390,43 @@ describe('calcularMemoria', () => {
     expect(m.alertas.some((a) => a.includes('superam o débito'))).toBe(true)
     const alerta = m.alertas.find((a) => a.includes('superam o débito'))
     const valorNoAlerta = Number(alerta.match(/R\$ ([\d.]+)/)[1])
-    expect(valorNoAlerta).toBeGreaterThan(6900) // a sobra real (~6970), não o residual (~29)
+    expect(valorNoAlerta).toBeCloseTo(6971.36, 1)
+  })
+
+  it('overpayment com data do excedente BEM anterior à data-base: totais reconciliam e o alerta bate com a sobra real', () => {
+    const series = { SELIC_DIARIA: selicFlat(0.04, '2020-01-01', '2025-01-02') }
+    const m = calcularMemoria({
+      parcelas: [
+        { id: 'p1', competencia: '2020-01-01', vencimento: '2020-01-10', valorDevido: 1000, ativa: true },
+        { id: 'p2', competencia: '2020-02-01', vencimento: '2020-02-10', valorDevido: 1000, ativa: true },
+      ],
+      pagamentos: [{ id: 'g1', dataPagamento: '2021-03-01', valor: 9000, identificadoPara: null }],
+      dataBase: '2024-08-01', dataCitacao: null,
+      indiceCorrecao: 'legal', regraImputacao: 'mais_antigas_primeiro',
+      regimeJurosConvencionado: '1_am_simples', series,
+    })
+    const { somaOriginal, somaCorrecao, somaJuros, somaPagamentos, saldo } = m.totais
+    expect(Math.abs(somaOriginal + somaCorrecao + somaJuros - somaPagamentos - saldo)).toBeLessThan(0.02)
+    expect(saldo).toBe(0)
+  })
+
+  it('pro_rata com overpayment parcial (não cobre tudo): sem alerta de excedente, saldo residual pequeno e reconciliado', () => {
+    const series = { SELIC_DIARIA: selicFlat(0.04, '2024-01-01', '2024-07-02') }
+    const m = calcularMemoria({
+      parcelas: [
+        { id: 'p1', competencia: '2024-01-01', vencimento: '2024-01-10', valorDevido: 1000, ativa: true },
+        { id: 'p2', competencia: '2024-02-01', vencimento: '2024-02-10', valorDevido: 1000, ativa: true },
+        { id: 'p3', competencia: '2024-03-01', vencimento: '2024-03-10', valorDevido: 1000, ativa: true },
+      ],
+      pagamentos: [{ id: 'g1', dataPagamento: '2024-04-01', valor: 3050, identificadoPara: null }],
+      dataBase: '2024-06-01', dataCitacao: null,
+      indiceCorrecao: 'legal', regraImputacao: 'pro_rata',
+      regimeJurosConvencionado: '1_am_simples', series,
+    })
+    const { somaOriginal, somaCorrecao, somaJuros, somaPagamentos, saldo } = m.totais
+    expect(Math.abs(somaOriginal + somaCorrecao + somaJuros - somaPagamentos - saldo)).toBeLessThan(0.02)
+    expect(m.alertas.some((a) => a.includes('superam o débito'))).toBe(false)
+    expect(saldo).toBeGreaterThan(0)
+    expect(saldo).toBeLessThan(20)
   })
 })
