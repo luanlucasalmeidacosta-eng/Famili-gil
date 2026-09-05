@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { classificarBem, apurarAcervo } from './_motor-partilha.js'
+import { classificarBem, apurarAcervo, calcularQuinhoes } from './_motor-partilha.js'
 
 const marcosPadrao = { dataCasamento: '2015-01-01', dataSeparacaoFato: null, separacaoFatoEfeito: 'corta_comunicacao' }
 
@@ -292,5 +292,79 @@ describe('apurarAcervo — participação final nos aquestos', () => {
     const passivos = [{ id: 'p1', valor: 50000, natureza: 'constancia_particular', responsavel: 'parte_a', bemVinculadoId: null }]
     const r = apurarAcervo({ bens, passivos, regimeBens: 'participacao_final_aquestos', marcos: marcosComSeparacao })
     expect(r.aquestos).toEqual({ a: 250000, b: 200000 })
+  })
+})
+
+describe('calcularQuinhoes — comunhão parcial, 50/50', () => {
+  const linhasBens = [
+    { bemId: 'b1', descricao: 'Casa', valorLiquido: 400000, classificacao: 'comunicavel' },
+    { bemId: 'b2', descricao: 'Carro', valorLiquido: 80000, classificacao: 'particular' },
+  ]
+  const totaisAcervo = { acervoBruto: 400000, passivosDedutiveis: 0, acervoLiquido: 400000 }
+
+  it('bem alocado integralmente pra uma parte gera torna pra equilibrar', () => {
+    const r = calcularQuinhoes({
+      regimeBens: 'comunhao_parcial', linhasBens, totaisAcervo, aquestos: null, passivos: [],
+      cenario: { pctParteA: 50, alocacoes: [{ bemId: 'b1', para: 'parte_a' }], tornas: [] },
+    })
+    expect(r.quadroQuinhoes.parteA).toMatchObject({ acervoLiquido: 400000, quinhaoIdealValor: 200000, valorAlocado: 400000, torna: 200000 })
+    expect(r.quadroQuinhoes.parteB).toMatchObject({ quinhaoIdealValor: 200000, valorAlocado: 0, torna: -200000 })
+    expect(r.linhasBens.find((l) => l.bemId === 'b1')).toMatchObject({ alocadoPara: 'parte_a', quinhaoValor: 400000 })
+  })
+
+  it('bem comunicável sem alocação no cenário gera alerta', () => {
+    const r = calcularQuinhoes({
+      regimeBens: 'comunhao_parcial', linhasBens, totaisAcervo, aquestos: null, passivos: [],
+      cenario: { pctParteA: 50, alocacoes: [], tornas: [] },
+    })
+    expect(r.alertas.some((a) => a.includes('não foi alocado'))).toBe(true)
+  })
+
+  it('condomínio sem fracaoA assume 50/50', () => {
+    const r = calcularQuinhoes({
+      regimeBens: 'comunhao_parcial', linhasBens, totaisAcervo, aquestos: null, passivos: [],
+      cenario: { pctParteA: 50, alocacoes: [{ bemId: 'b1', para: 'condominio' }], tornas: [] },
+    })
+    expect(r.quadroQuinhoes.parteA.valorAlocado).toBe(200000)
+    expect(r.quadroQuinhoes.parteB.valorAlocado).toBe(200000)
+  })
+
+  it('percentual livre (60/40) muda o quinhão ideal', () => {
+    const r = calcularQuinhoes({
+      regimeBens: 'comunhao_parcial', linhasBens, totaisAcervo, aquestos: null, passivos: [],
+      cenario: { pctParteA: 60, alocacoes: [{ bemId: 'b1', para: 'parte_a' }], tornas: [] },
+    })
+    expect(r.quadroQuinhoes.parteA.quinhaoIdealValor).toBe(240000)
+    expect(r.quadroQuinhoes.parteA.torna).toBe(160000) // 400000 - 240000
+  })
+
+  it('divergência entre torna calculada e informada gera alerta', () => {
+    const r = calcularQuinhoes({
+      regimeBens: 'comunhao_parcial', linhasBens, totaisAcervo, aquestos: null, passivos: [],
+      cenario: { pctParteA: 50, alocacoes: [{ bemId: 'b1', para: 'parte_a' }], tornas: [{ de: 'parte_a', para: 'parte_b', valor: 50000, forma: 'dinheiro' }] },
+    })
+    expect(r.alertas.some((a) => a.includes('diverge'))).toBe(true)
+  })
+})
+
+describe('calcularQuinhoes — participação final nos aquestos', () => {
+  it('crédito de compensação, ignora pctParteA', () => {
+    const r = calcularQuinhoes({
+      regimeBens: 'participacao_final_aquestos', linhasBens: [], totaisAcervo: { acervoBruto: 0, passivosDedutiveis: 0, acervoLiquido: 0 },
+      aquestos: { a: 250000, b: 200000 }, passivos: [],
+      cenario: { pctParteA: 50, alocacoes: [], tornas: [] },
+    })
+    // creditoAcontraB = 0.5*200000=100000; creditoBcontraA = 0.5*250000=125000; saldo = 100000-125000 = -25000
+    expect(r.quadroQuinhoes.parteA.torna).toBe(-25000)
+    expect(r.quadroQuinhoes.parteB.torna).toBe(25000)
+  })
+
+  it('pctParteA != 50 nesse regime gera alerta (é ignorado no cálculo)', () => {
+    const r = calcularQuinhoes({
+      regimeBens: 'participacao_final_aquestos', linhasBens: [], totaisAcervo: { acervoBruto: 0, passivosDedutiveis: 0, acervoLiquido: 0 },
+      aquestos: { a: 100000, b: 100000 }, passivos: [],
+      cenario: { pctParteA: 70, alocacoes: [], tornas: [] },
+    })
+    expect(r.alertas.some((a) => a.includes('participação final'))).toBe(true)
   })
 })

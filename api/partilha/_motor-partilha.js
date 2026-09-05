@@ -277,3 +277,91 @@ export function apurarAcervo({ bens, passivos, regimeBens, marcos }) {
     aquestos, linhaTempo, alertas,
   }
 }
+
+function passivoAtribuidoAparte(passivo, parte, regimeBens, linhasBens) {
+  if (!passivoDedutivelComum(passivo, regimeBens, linhasBens)) return 0
+  if (passivo.responsavel === parte) return passivo.valor
+  if (passivo.responsavel === 'ambos') return passivo.valor / 2
+  return 0
+}
+
+/**
+ * @returns {{linhasBens: Array, quadroQuinhoes: object, alertas: string[]}}
+ */
+export function calcularQuinhoes({ regimeBens, linhasBens, totaisAcervo, aquestos, passivos, cenario }) {
+  const alertas = []
+
+  if (regimeBens === 'participacao_final_aquestos') {
+    if (cenario.pctParteA !== 50) {
+      alertas.push(`pctParteA = ${cenario.pctParteA}% é ignorado no regime de participação final nos aquestos (usa crédito de compensação).`)
+    }
+    const creditoAcontraB = arredonda2(0.5 * aquestos.b)
+    const creditoBcontraA = arredonda2(0.5 * aquestos.a)
+    const saldo = arredonda2(creditoAcontraB - creditoBcontraA)
+    const linhasSemAlocacao = linhasBens.map((l) => ({ ...l, alocadoPara: null, quinhaoValor: 0 }))
+    return {
+      linhasBens: linhasSemAlocacao,
+      quadroQuinhoes: {
+        parteA: { acervoLiquido: aquestos.a, quinhaoIdealPct: null, quinhaoIdealValor: null, valorAlocado: aquestos.a, torna: saldo },
+        parteB: { acervoLiquido: aquestos.b, quinhaoIdealPct: null, quinhaoIdealValor: null, valorAlocado: aquestos.b, torna: -saldo },
+      },
+      alertas,
+    }
+  }
+
+  const mapaAlocacao = new Map((cenario.alocacoes || []).map((a) => [a.bemId, a]))
+  let valorAlocadoA = 0
+  let valorAlocadoB = 0
+
+  const linhasComAlocacao = linhasBens.map((linha) => {
+    if (linha.classificacao !== 'comunicavel') {
+      return { ...linha, alocadoPara: null, quinhaoValor: 0 }
+    }
+    const aloc = mapaAlocacao.get(linha.bemId)
+    if (!aloc) {
+      alertas.push(`Bem "${linha.descricao}" está comunicável mas não foi alocado neste cenário.`)
+      return { ...linha, alocadoPara: null, quinhaoValor: 0 }
+    }
+    if (aloc.para === 'condominio') {
+      const fracaoA = aloc.fracaoA ?? 0.5
+      const valorA = arredonda2(linha.valorLiquido * fracaoA)
+      const valorB = arredonda2(linha.valorLiquido - valorA)
+      valorAlocadoA += valorA
+      valorAlocadoB += valorB
+      return { ...linha, alocadoPara: 'condominio', quinhaoValor: linha.valorLiquido }
+    }
+    if (aloc.para === 'parte_a') valorAlocadoA += linha.valorLiquido
+    else valorAlocadoB += linha.valorLiquido
+    return { ...linha, alocadoPara: aloc.para, quinhaoValor: linha.valorLiquido }
+  })
+
+  for (const passivo of passivos) {
+    valorAlocadoA -= passivoAtribuidoAparte(passivo, 'parte_a', regimeBens, linhasBens)
+    valorAlocadoB -= passivoAtribuidoAparte(passivo, 'parte_b', regimeBens, linhasBens)
+  }
+  valorAlocadoA = arredonda2(valorAlocadoA)
+  valorAlocadoB = arredonda2(valorAlocadoB)
+
+  const quinhaoIdealA = arredonda2((cenario.pctParteA / 100) * totaisAcervo.acervoLiquido)
+  const quinhaoIdealB = arredonda2(totaisAcervo.acervoLiquido - quinhaoIdealA)
+  const tornaA = arredonda2(valorAlocadoA - quinhaoIdealA)
+  const tornaB = arredonda2(valorAlocadoB - quinhaoIdealB)
+
+  const tornaInformadaLiquida = arredonda2((cenario.tornas || []).reduce((s, t) => {
+    if (t.de === 'parte_a' && t.para === 'parte_b') return s + t.valor
+    if (t.de === 'parte_b' && t.para === 'parte_a') return s - t.valor
+    return s
+  }, 0))
+  if (Math.abs(tornaInformadaLiquida - tornaA) > 0.01) {
+    alertas.push(`A torna calculada (R$ ${tornaA.toFixed(2)}) diverge da informada no cenário (R$ ${tornaInformadaLiquida.toFixed(2)}).`)
+  }
+
+  return {
+    linhasBens: linhasComAlocacao,
+    quadroQuinhoes: {
+      parteA: { acervoLiquido: totaisAcervo.acervoLiquido, quinhaoIdealPct: cenario.pctParteA, quinhaoIdealValor: quinhaoIdealA, valorAlocado: valorAlocadoA, torna: tornaA },
+      parteB: { acervoLiquido: totaisAcervo.acervoLiquido, quinhaoIdealPct: 100 - cenario.pctParteA, quinhaoIdealValor: quinhaoIdealB, valorAlocado: valorAlocadoB, torna: tornaB },
+    },
+    alertas,
+  }
+}
