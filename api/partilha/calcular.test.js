@@ -55,4 +55,29 @@ describe('processarCalculo', () => {
     await expect(processarCalculo({ supabase: fakeSb(tabelas), casoId: 'caso1', cenarioId: 'c1' }))
       .rejects.toMatchObject({ status: 404 })
   })
+
+  it('incrementa versão de v2 → v3', async () => {
+    const tabelas = baseTabelas({ partilha_memoria: { data: { versao: 2 }, error: null } })
+    const out = await processarCalculo({ supabase: fakeSb(tabelas), casoId: 'caso1', cenarioId: 'c1' })
+    expect(out).toEqual({ memoriaId: 'mem1', versao: 3 })
+  })
+
+  it('bem pendente (sem formaAquisicao) não bloqueia cálculo', async () => {
+    const bemPendente = {
+      id: 'b2',
+      descricao: 'Carro',
+      tipo: 'veiculo',
+      valor_mercado: 50000,
+      data_aquisicao: '2020-06-01',
+      forma_aquisicao: null,
+      clausula_incomunicabilidade: false,
+      titular: 'parte_b',
+      financiado: false,
+      saldo_devedor: null,
+      classificacao_override: null,
+    }
+    const tabelas = baseTabelas({ partilha_bens: { data: [bensOk[0], bemPendente], error: null } })
+    const out = await processarCalculo({ supabase: fakeSb(tabelas), casoId: 'caso1', cenarioId: 'c1' })
+    expect(out).toEqual({ memoriaId: 'mem1', versao: 1 })
+  })
 })
