@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { classificarBem, apurarAcervo, calcularQuinhoes } from './_motor-partilha.js'
+import { classificarBem, apurarAcervo, calcularQuinhoes, sinalizarTributario } from './_motor-partilha.js'
 
 const marcosPadrao = { dataCasamento: '2015-01-01', dataSeparacaoFato: null, separacaoFatoEfeito: 'corta_comunicacao' }
 
@@ -366,5 +366,42 @@ describe('calcularQuinhoes — participação final nos aquestos', () => {
       cenario: { pctParteA: 70, alocacoes: [], tornas: [] },
     })
     expect(r.alertas.some((a) => a.includes('participação final'))).toBe(true)
+  })
+})
+
+describe('sinalizarTributario', () => {
+  it('sem excesso → nenhum alerta', () => {
+    const r = sinalizarTributario({
+      quadroQuinhoes: { parteA: { torna: 0 }, parteB: { torna: 0 } },
+      cenario: { tornas: [] },
+    })
+    expect(r).toEqual([])
+  })
+
+  it('excesso todo coberto por torna em dinheiro → só ITBI', () => {
+    const r = sinalizarTributario({
+      quadroQuinhoes: { parteA: { torna: 200000 }, parteB: { torna: -200000 } },
+      cenario: { tornas: [{ de: 'parte_a', para: 'parte_b', valor: 200000, forma: 'dinheiro' }] },
+    })
+    expect(r).toEqual([{ tipo: 'ITBI', base: 200000, fundamento: expect.stringContaining('Súmula 116') }])
+  })
+
+  it('excesso sem nenhuma contrapartida → só ITCMD', () => {
+    const r = sinalizarTributario({
+      quadroQuinhoes: { parteA: { torna: 200000 }, parteB: { torna: -200000 } },
+      cenario: { tornas: [{ de: 'parte_a', para: 'parte_b', valor: 200000, forma: 'sem_contrapartida' }] },
+    })
+    expect(r).toEqual([{ tipo: 'ITCMD', base: 200000, fundamento: expect.stringContaining('doação') }])
+  })
+
+  it('excesso parcialmente coberto → ITBI na parte onerosa e ITCMD no restante', () => {
+    const r = sinalizarTributario({
+      quadroQuinhoes: { parteA: { torna: 200000 }, parteB: { torna: -200000 } },
+      cenario: { tornas: [{ de: 'parte_a', para: 'parte_b', valor: 120000, forma: 'dinheiro' }] },
+    })
+    expect(r).toEqual([
+      { tipo: 'ITBI', base: 120000, fundamento: expect.stringContaining('Súmula 116') },
+      { tipo: 'ITCMD', base: 80000, fundamento: expect.stringContaining('doação') },
+    ])
   })
 })

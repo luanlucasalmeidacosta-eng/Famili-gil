@@ -365,3 +365,32 @@ export function calcularQuinhoes({ regimeBens, linhasBens, totaisAcervo, aquesto
     alertas,
   }
 }
+
+/**
+ * @returns {Array<{tipo:'ITBI'|'ITCMD', base:number, fundamento:string}>}
+ */
+export function sinalizarTributario({ quadroQuinhoes, cenario }) {
+  const excesso = Math.abs(quadroQuinhoes.parteA.torna)
+  if (excesso <= 0.01) return []
+
+  const tornaOnerosaInformada = (cenario.tornas || [])
+    .filter((t) => t.forma === 'dinheiro' || t.forma === 'bem')
+    .reduce((s, t) => s + t.valor, 0)
+
+  const alertasTributarios = []
+  const baseItbi = Math.min(excesso, tornaOnerosaInformada)
+  if (baseItbi > 0.01) {
+    alertasTributarios.push({
+      tipo: 'ITBI', base: arredonda2(baseItbi),
+      fundamento: 'Súmula 116 do STF — legítima a cobrança de imposto de reposição quando há desigualdade nos valores partilhados; incidência sobre a torna dentro do limite da meação.',
+    })
+  }
+  const baseItcmd = excesso - baseItbi
+  if (baseItcmd > 0.01) {
+    alertasTributarios.push({
+      tipo: 'ITCMD', base: arredonda2(baseItcmd),
+      fundamento: 'Excesso de meação sem contrapartida onerosa caracteriza doação — distinção jurisprudencial ITBI × ITCMD no excesso de meação.',
+    })
+  }
+  return alertasTributarios
+}
