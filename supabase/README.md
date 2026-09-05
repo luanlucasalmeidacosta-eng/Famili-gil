@@ -18,7 +18,7 @@ supabase db push
 1. `0001_fundacao.sql` — casos, documentos_caso, indices_cache, RLS, Storage,
    pgvector, tabelas vetoriais vazias.
 2. `0002_pensao.sql` — Plano 02: pensao_parametros, pensao_parcelas, pensao_pagamentos, pensao_memoria + RLS.
-3. `0003_partilha.sql` — Plano 03.
+3. `0003_partilha.sql` — Plano 03: partilha_config, partilha_bens, partilha_passivos, partilha_cenarios, partilha_memoria + RLS.
 
 ## Env
 
