@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch, apiFetchBlob } from '../../lib/api.js'
 import { supabase } from '../../lib/supabase.js'
+import { Button, Select, Alert, Card, EmptyState } from '../../components/ui.jsx'
 
 const brl = (n) => `R$ ${Number(n).toFixed(2).replace('.', ',')}`
 
@@ -16,16 +17,16 @@ const valor = (v) => (v == null ? '—' : brl(v))
 
 function QuadroQuinhoes({ titulo, quadro }) {
   return (
-    <div className="rounded border p-3">
-      <h3 className="font-medium">{titulo}</h3>
+    <Card className="p-3">
+      <h3 className="font-medium text-slate-900">{titulo}</h3>
       <table className="mt-2 w-full text-left">
-        <thead><tr className="text-xs text-neutral-500">
+        <thead><tr className="text-xs text-slate-500">
           <th className="py-1">Parte</th><th className="py-1">Acervo/aquestos</th>
           <th className="py-1">Quinhão ideal</th><th className="py-1">Valor alocado</th><th className="py-1">Torna</th>
         </tr></thead>
         <tbody>
           {[['Parte A', quadro.parteA], ['Parte B', quadro.parteB]].map(([nome, p]) => (
-            <tr key={nome} className="border-t">
+            <tr key={nome} className="border-t border-slate-100">
               <td className="py-1">{nome}</td>
               <td className="py-1">{brl(p.acervoLiquido)}</td>
               <td className="py-1">{pct(p.quinhaoIdealPct)} — {valor(p.quinhaoIdealValor)}</td>
@@ -35,7 +36,7 @@ function QuadroQuinhoes({ titulo, quadro }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </Card>
   )
 }
 
@@ -82,61 +83,83 @@ export default function AbaMemoria({ caso }) {
     } catch (e) { setErro(e.message) }
   }
 
+  const versaoMaisRecente = versoes[0]?.versao
+
   return (
     <div className="text-sm">
-      <div className="mb-3 flex flex-wrap items-end gap-3">
-        {versoes.length > 0 && (
-          <label>Versão
-            <select onChange={(e) => carregarVersao(e.target.value)} className="mt-1 block rounded border px-2 py-1">
-              {versoes.map((v) => <option key={v.versao} value={v.versao}>v{v.versao}</option>)}
-            </select>
-          </label>
-        )}
+      {versoes.length > 0 && (
+        <div className="mb-4">
+          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Versões calculadas</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {versoes.map((v) => (
+              <button
+                key={v.versao}
+                onClick={() => carregarVersao(v.versao)}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  memoria?.versao === v.versao
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                v{v.versao}{v.versao === versaoMaisRecente ? ' · atual' : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mb-4 flex flex-wrap items-end gap-3">
         {versoes.length > 1 && (
           <>
-            <label>Comparar com
-              <select value={versaoB} onChange={(e) => setVersaoB(e.target.value)} className="mt-1 block rounded border px-2 py-1">
+            <label className="text-sm text-slate-700">Comparar com
+              <Select value={versaoB} onChange={(e) => setVersaoB(e.target.value)} className="mt-1 w-32">
                 <option value="">— nenhuma —</option>
                 {versoes.map((v) => <option key={v.versao} value={v.versao}>v{v.versao}</option>)}
-              </select>
+              </Select>
             </label>
-            <button onClick={comparar} disabled={!versaoB} className="rounded border px-3 py-1.5 disabled:opacity-50">Comparar</button>
+            <Button variant="secondary" onClick={comparar} disabled={!versaoB}>Comparar</Button>
           </>
         )}
         {memoria && (
           <span className="flex gap-2">
-            <button onClick={() => exportar('docx')} className="rounded border px-3 py-1.5">Exportar Word</button>
-            <button onClick={() => exportar('xlsx')} className="rounded border px-3 py-1.5">Exportar planilha</button>
+            <Button variant="secondary" onClick={() => exportar('docx')}>Exportar Word</Button>
+            <Button variant="secondary" onClick={() => exportar('xlsx')}>Exportar planilha</Button>
           </span>
         )}
       </div>
 
-      {erro && <p role="alert" className="mb-3 rounded border border-red-300 bg-red-50 p-2 text-red-700">{erro}</p>}
+      {erro && <Alert>{erro}</Alert>}
+
+      {!memoria && versoes.length === 0 && !erro && (
+        <EmptyState>Nenhuma versão calculada ainda — cadastre um cenário e clique em Calcular.</EmptyState>
+      )}
 
       {memoria && (
         <>
           {memoria.alertas?.length > 0 && (
-            <ul role="alert" className="mb-3 rounded border border-amber-300 bg-amber-50 p-2">
-              {memoria.alertas.map((a, i) => <li key={i}>• {a}</li>)}
-            </ul>
+            <div className="mb-3">
+              <Alert tone="amber"><ul>{memoria.alertas.map((a, i) => <li key={i}>• {a}</li>)}</ul></Alert>
+            </div>
           )}
-          <table className="w-full border">
-            <thead><tr className="bg-neutral-50 text-left">
-              <th className="p-2">Descrição</th><th className="p-2">Valor</th><th className="p-2">Classificação</th>
-              <th className="p-2">Fundamento</th><th className="p-2">Alocado</th>
-            </tr></thead>
-            <tbody>
-              {memoria.linhas_bens.map((l) => (
-                <tr key={l.bemId} className="border-t">
-                  <td className="p-2">{l.descricao}</td>
-                  <td className="p-2">{brl(l.valorLiquido)}</td>
-                  <td className="p-2">{l.classificacao}</td>
-                  <td className="p-2 text-xs">{l.citacao}</td>
-                  <td className="p-2">{l.alocadoPara || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="w-full text-left">
+              <thead><tr className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <th className="p-2">Descrição</th><th className="p-2">Valor</th><th className="p-2">Classificação</th>
+                <th className="p-2">Fundamento</th><th className="p-2">Alocado</th>
+              </tr></thead>
+              <tbody>
+                {memoria.linhas_bens.map((l) => (
+                  <tr key={l.bemId} className="border-t border-slate-100">
+                    <td className="p-2">{l.descricao}</td>
+                    <td className="p-2">{brl(l.valorLiquido)}</td>
+                    <td className="p-2">{l.classificacao}</td>
+                    <td className="p-2 text-xs">{l.citacao}</td>
+                    <td className="p-2">{l.alocadoPara || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <QuadroQuinhoes titulo={`Quinhões e tornas — v${memoria.versao}`} quadro={memoria.quadro_quinhoes} />
@@ -146,13 +169,13 @@ export default function AbaMemoria({ caso }) {
           </div>
 
           {memoria.linha_tempo?.length > 0 && (
-            <div className="mt-4 rounded border p-3">
-              <h3 className="font-medium">Linha do tempo</h3>
+            <Card className="mt-4 p-3">
+              <h3 className="font-medium text-slate-900">Linha do tempo</h3>
               <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 {memoria.linha_tempo.map((item) => (
-                  <div key={item.intervalo} className="rounded border p-2">
-                    <p className="font-medium">{ROTULOS_INTERVALO[item.intervalo] || item.intervalo}</p>
-                    <p className="text-xs text-neutral-600">{fmtData(item.de)} – {fmtData(item.ate)}</p>
+                  <div key={item.intervalo} className="rounded-lg border border-slate-200 p-2">
+                    <p className="font-medium text-slate-900">{ROTULOS_INTERVALO[item.intervalo] || item.intervalo}</p>
+                    <p className="text-xs text-slate-500">{fmtData(item.de)} – {fmtData(item.ate)}</p>
                     {item.alertas?.length > 0 && (
                       <ul className="mt-1 text-xs text-amber-700">
                         {item.alertas.map((a, i) => <li key={i}>• {a}</li>)}
@@ -161,17 +184,17 @@ export default function AbaMemoria({ caso }) {
                   </div>
                 ))}
               </div>
-            </div>
+            </Card>
           )}
 
           {memoria.alertas_tributarios?.length > 0 && (
-            <div className="mt-4 rounded border p-3">
-              <h3 className="font-medium">Enquadramento tributário</h3>
+            <Card className="mt-4 p-3">
+              <h3 className="font-medium text-slate-900">Enquadramento tributário</h3>
               {memoria.alertas_tributarios.map((t, i) => (
                 <p key={i}>{t.tipo} sobre {brl(t.base)} — {t.fundamento}</p>
               ))}
-              <p className="text-xs italic text-neutral-500">O valor do imposto não é calculado aqui.</p>
-            </div>
+              <p className="mt-1 text-xs italic text-slate-500">O valor do imposto não é calculado aqui.</p>
+            </Card>
           )}
         </>
       )}

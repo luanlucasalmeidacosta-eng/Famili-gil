@@ -3,11 +3,12 @@ import { AuthProvider, useAuth } from './auth/AuthProvider.jsx'
 import Login from './pages/Login.jsx'
 import Casos from './pages/Casos.jsx'
 import CasoRouter from './pages/CasoRouter.jsx'
+import Shell from './components/Shell.jsx'
 
 function Protegida({ children }) {
   const { session, carregando } = useAuth()
-  if (carregando) return <p className="p-6 text-sm text-neutral-500">Carregando…</p>
-  return session ? children : <Navigate to="/login" replace />
+  if (carregando) return <p className="p-6 text-sm text-slate-500">Carregando…</p>
+  return session ? <Shell>{children}</Shell> : <Navigate to="/login" replace />
 }
 
 function Rotas() {

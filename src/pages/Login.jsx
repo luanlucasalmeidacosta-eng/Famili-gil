@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../auth/AuthProvider.jsx'
+import { Button, Field, Input, Alert } from '../components/ui.jsx'
 
 export default function Login() {
   const { entrar } = useAuth()
@@ -22,30 +23,23 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-neutral-50">
-      <form onSubmit={onSubmit} className="w-full max-w-sm space-y-4 rounded-xl border bg-white p-6">
-        <h1 className="text-lg font-semibold">FamiliÁgil</h1>
-        <label className="block text-sm">
-          E-mail
-          <input
-            type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded border px-3 py-2"
-          />
-        </label>
-        <label className="block text-sm">
-          Senha
-          <input
-            type="password" required value={senha} onChange={(e) => setSenha(e.target.value)}
-            className="mt-1 w-full rounded border px-3 py-2"
-          />
-        </label>
-        {erro && <p role="alert" className="text-sm text-red-600">{erro}</p>}
-        <button
-          type="submit" disabled={enviando}
-          className="w-full rounded bg-neutral-900 px-3 py-2 text-sm text-white disabled:opacity-50"
-        >
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+      <form onSubmit={onSubmit} className="w-full max-w-sm space-y-5 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+        <div className="text-center">
+          <span className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-lg font-bold text-white">F</span>
+          <h1 className="text-lg font-semibold text-slate-900">FamiliÁgil</h1>
+          <p className="mt-1 text-sm text-slate-500">Entre para acessar seus casos</p>
+        </div>
+        <Field label="E-mail">
+          <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        </Field>
+        <Field label="Senha">
+          <Input type="password" required value={senha} onChange={(e) => setSenha(e.target.value)} />
+        </Field>
+        {erro && <Alert>{erro}</Alert>}
+        <Button type="submit" disabled={enviando} className="w-full" size="lg">
           {enviando ? 'Entrando…' : 'Entrar'}
-        </button>
+        </Button>
       </form>
     </div>
   )

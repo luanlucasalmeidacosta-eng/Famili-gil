@@ -1,21 +1,25 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
+import { Button, Card, Badge, Field, Input, Alert, PageHeader, EmptyState } from '../components/ui.jsx'
+
+const ROTULO_TIPO = { pensao: 'Pensão', partilha: 'Partilha' }
 
 export default function Casos() {
   const navigate = useNavigate()
   const [casos, setCasos] = useState([])
+  const [verArquivados, setVerArquivados] = useState(false)
   const [abrindo, setAbrindo] = useState(false)
   const [titulo, setTitulo] = useState('')
   const [tipo, setTipo] = useState('pensao')
   const [erro, setErro] = useState('')
 
-  async function carregar() {
+  async function carregar(mostrarArquivados) {
     const { data, error } = await supabase
-      .from('casos').select('*').eq('arquivado', false).order('criado_em', { ascending: false })
+      .from('casos').select('*').eq('arquivado', mostrarArquivados).order('criado_em', { ascending: false })
     if (!error) setCasos(data ?? [])
   }
-  useEffect(() => { carregar() }, [])
+  useEffect(() => { carregar(verArquivados) }, [verArquivados])
 
   async function criar(e) {
     e.preventDefault()
@@ -28,44 +32,68 @@ export default function Casos() {
 
   async function arquivar(id) {
     await supabase.from('casos').update({ arquivado: true }).eq('id', id)
-    carregar()
+    carregar(verArquivados)
+  }
+
+  async function desarquivar(id) {
+    await supabase.from('casos').update({ arquivado: false }).eq('id', id)
+    carregar(verArquivados)
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Casos</h1>
-        <button onClick={() => setAbrindo(true)} className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white">
-          Novo caso
+    <div className="mx-auto max-w-3xl px-6 py-8">
+      <PageHeader
+        title="Casos"
+        actions={!verArquivados && <Button onClick={() => setAbrindo(true)}>+ Novo caso</Button>}
+      />
+
+      <div className="mb-3 flex gap-1 border-b border-slate-200 text-sm">
+        <button
+          onClick={() => setVerArquivados(false)}
+          className={`px-3 py-2 ${!verArquivados ? 'border-b-2 border-indigo-600 font-medium text-slate-900' : 'text-slate-500'}`}
+        >
+          Ativos
+        </button>
+        <button
+          onClick={() => setVerArquivados(true)}
+          className={`px-3 py-2 ${verArquivados ? 'border-b-2 border-indigo-600 font-medium text-slate-900' : 'text-slate-500'}`}
+        >
+          Arquivados
         </button>
       </div>
 
-      <ul className="divide-y rounded-lg border bg-white">
+      <Card className="divide-y divide-slate-100">
         {casos.map((c) => (
-          <li key={c.id} className="flex items-center justify-between px-4 py-3 text-sm">
-            <button className="text-left" onClick={() => navigate(`/caso/${c.id}`)}>
-              <span className="font-medium">{c.titulo}</span>
-              <span className="ml-2 rounded bg-neutral-100 px-1.5 py-0.5 text-xs uppercase">{c.tipo}</span>
+          <div key={c.id} className="flex items-center justify-between gap-3 px-4 py-3">
+            <button className="min-w-0 flex-1 text-left" onClick={() => navigate(`/caso/${c.id}`)}>
+              <span className="block truncate text-sm font-medium text-slate-900">{c.titulo}</span>
+              <Badge tone="indigo" className="mt-1">{ROTULO_TIPO[c.tipo] || c.tipo}</Badge>
             </button>
-            <button onClick={() => arquivar(c.id)} className="text-xs text-neutral-500 hover:text-red-600">
-              Arquivar
-            </button>
-          </li>
+            {verArquivados ? (
+              <Button variant="secondary" size="sm" onClick={() => desarquivar(c.id)}>Desarquivar</Button>
+            ) : (
+              <Button variant="danger" size="sm" onClick={() => arquivar(c.id)}>Arquivar</Button>
+            )}
+          </div>
         ))}
-        {casos.length === 0 && <li className="px-4 py-6 text-sm text-neutral-500">Nenhum caso ainda.</li>}
-      </ul>
+        {casos.length === 0 && (
+          <div className="p-2">
+            <EmptyState>
+              {verArquivados ? 'Nenhum caso arquivado.' : 'Nenhum caso ativo ainda — crie o primeiro.'}
+            </EmptyState>
+          </div>
+        )}
+      </Card>
 
       {abrindo && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/30">
-          <form onSubmit={criar} className="w-full max-w-sm space-y-4 rounded-xl bg-white p-6">
-            <h2 className="font-semibold">Novo caso</h2>
-            <label className="block text-sm">
-              Título
-              <input value={titulo} onChange={(e) => setTitulo(e.target.value)} required
-                className="mt-1 w-full rounded border px-3 py-2" />
-            </label>
+        <div className="fixed inset-0 flex items-center justify-center bg-slate-900/40 px-4">
+          <form onSubmit={criar} className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-6 shadow-lg">
+            <h2 className="font-semibold text-slate-900">Novo caso</h2>
+            <Field label="Título">
+              <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} required />
+            </Field>
             <fieldset className="text-sm">
-              <legend className="mb-1">Tipo</legend>
+              <legend className="mb-1 font-medium text-slate-700">Tipo</legend>
               <label className="mr-4">
                 <input type="radio" name="tipo" value="pensao"
                   checked={tipo === 'pensao'} onChange={() => setTipo('pensao')} /> Pensão
@@ -75,14 +103,10 @@ export default function Casos() {
                   checked={tipo === 'partilha'} onChange={() => setTipo('partilha')} /> Partilha
               </label>
             </fieldset>
-            {erro && <p role="alert" className="text-sm text-red-600">{erro}</p>}
+            {erro && <Alert>{erro}</Alert>}
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setAbrindo(false)} className="rounded px-3 py-1.5 text-sm">
-                Cancelar
-              </button>
-              <button type="submit" className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white">
-                Criar
-              </button>
+              <Button type="button" variant="ghost" onClick={() => setAbrindo(false)}>Cancelar</Button>
+              <Button type="submit">Criar</Button>
             </div>
           </form>
         </div>
