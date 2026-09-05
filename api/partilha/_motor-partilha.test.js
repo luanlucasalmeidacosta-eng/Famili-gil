@@ -317,6 +317,44 @@ describe('apurarAcervo — separação de fato, modo apenas_alerta', () => {
   })
 })
 
+describe('apurarAcervo — alertas por intervalo na linha do tempo', () => {
+  it('incoerência de classificação aparece no intervalo do bem, não só no array global', () => {
+    // separação total: bem oneroso adquirido na constância sai particular por ser de
+    // titular único — o motor sinaliza a incoerência temporal pro advogado conferir.
+    const bens = [
+      { id: 'b1', descricao: 'Chácara', tipo: 'imovel', valorMercado: 100000, dataAquisicao: '2018-01-01', formaAquisicao: 'oneroso', titular: 'parte_a', financiado: false },
+    ]
+    const r = apurarAcervo({ bens, passivos: [], regimeBens: 'separacao_total', marcos: marcosComSeparacao })
+    const constancia = r.linhaTempo.find((t) => t.intervalo === 'constancia')
+    expect(constancia.bensNoIntervalo).toContain('b1')
+    expect(constancia.alertas.some((a) => a.includes('Chácara') && a.includes('saiu particular'))).toBe(true)
+    // continua também no array global (contrato existente)
+    expect(r.alertas.some((a) => a.includes('Chácara') && a.includes('saiu particular'))).toBe(true)
+  })
+
+  it('alerta de bem adquirido após a separação de fato (apenas_alerta) cai no intervalo do bem', () => {
+    const bens = [
+      { id: 'b1', descricao: 'Terreno pós-separação', tipo: 'imovel', valorMercado: 100000, dataAquisicao: '2023-01-01', formaAquisicao: 'oneroso', titular: 'parte_a', financiado: false },
+    ]
+    const r = apurarAcervo({
+      bens, passivos: [], regimeBens: 'comunhao_parcial',
+      marcos: { dataCasamento: '2015-01-01', dataSeparacaoFato: '2022-06-01', dataAjuizamento: '2024-01-01', separacaoFatoEfeito: 'apenas_alerta' },
+    })
+    const comAlerta = r.linhaTempo.filter((t) => t.alertas.length > 0)
+    expect(comAlerta.length).toBeGreaterThan(0)
+    expect(comAlerta[0].alertas.some((a) => a.includes('após a separação de fato'))).toBe(true)
+  })
+
+  it('alerta de bem sem data não é atribuído a nenhum intervalo', () => {
+    const bens = [
+      { id: 'b1', descricao: 'Bem sem data', tipo: 'outro', valorMercado: 1000, dataAquisicao: null, formaAquisicao: 'oneroso', titular: 'parte_a', financiado: false },
+    ]
+    const r = apurarAcervo({ bens, passivos: [], regimeBens: 'comunhao_parcial', marcos: marcosComSeparacao })
+    expect(r.alertas.some((a) => a.includes('Bem sem data'))).toBe(true)
+    expect(r.linhaTempo.every((t) => t.alertas.length === 0)).toBe(true)
+  })
+})
+
 describe('apurarAcervo — participação final nos aquestos', () => {
   it('calcula aquestos de A e B líquidos de passivos', () => {
     const bens = [
@@ -444,6 +482,46 @@ describe('sinalizarTributario', () => {
       cenario: { tornas: [{ de: 'parte_a', para: 'parte_b', valor: 120000, forma: 'dinheiro' }] },
     })
     expect(r).toEqual([
+      { tipo: 'ITBI', base: 120000, fundamento: expect.stringContaining('Súmula 116') },
+      { tipo: 'ITCMD', base: 80000, fundamento: expect.stringContaining('doação') },
+    ])
+  })
+
+  it('participação final nos aquestos: torna é crédito de compensação, não excesso de meação → nenhum alerta', () => {
+    const r = sinalizarTributario({
+      quadroQuinhoes: { parteA: { torna: -25000 }, parteB: { torna: 25000 } },
+      cenario: { tornas: [{ de: 'parte_b', para: 'parte_a', valor: 25000, forma: 'sem_contrapartida' }] },
+      regimeBens: 'participacao_final_aquestos',
+    })
+    expect(r).toEqual([])
+  })
+
+  it('a aferição é pela TOTALIDADE do patrimônio, não bem a bem (spec §13.2, item 11)', () => {
+    // Mesmo acervo comunicável total (400.000) e mesma alocação em valor, mas
+    // reorganizado em quantidades/valores de bens diferentes: a base tributária
+    // não pode mudar — ela é apurada sobre o excesso do quinhão como um todo.
+    const marcos = { dataCasamento: '2015-01-01', dataSeparacaoFato: null, separacaoFatoEfeito: 'corta_comunicacao' }
+    const cenarioBase = { pctParteA: 50, tornas: [{ de: 'parte_a', para: 'parte_b', valor: 120000, forma: 'dinheiro' }] }
+    const comum = { tipo: 'imovel', dataAquisicao: '2018-01-01', formaAquisicao: 'oneroso', titular: 'parte_a', financiado: false }
+
+    const umBemSo = calcularPartilha({
+      regimeBens: 'comunhao_parcial', marcos, passivos: [],
+      bens: [{ id: 'b1', descricao: 'Casa', valorMercado: 400000, ...comum }],
+      cenario: { ...cenarioBase, alocacoes: [{ bemId: 'b1', para: 'parte_a' }] },
+    })
+    const tresBens = calcularPartilha({
+      regimeBens: 'comunhao_parcial', marcos, passivos: [],
+      bens: [
+        { id: 'b1', descricao: 'Casa', valorMercado: 250000, ...comum },
+        { id: 'b2', descricao: 'Sítio', valorMercado: 100000, ...comum },
+        { id: 'b3', descricao: 'Loja', valorMercado: 50000, ...comum },
+      ],
+      cenario: { ...cenarioBase, alocacoes: [{ bemId: 'b1', para: 'parte_a' }, { bemId: 'b2', para: 'parte_a' }, { bemId: 'b3', para: 'parte_a' }] },
+    })
+
+    expect(tresBens.totais.acervoLiquido).toBe(umBemSo.totais.acervoLiquido)
+    expect(tresBens.alertasTributarios).toEqual(umBemSo.alertasTributarios)
+    expect(umBemSo.alertasTributarios).toEqual([
       { tipo: 'ITBI', base: 120000, fundamento: expect.stringContaining('Súmula 116') },
       { tipo: 'ITCMD', base: 80000, fundamento: expect.stringContaining('doação') },
     ])

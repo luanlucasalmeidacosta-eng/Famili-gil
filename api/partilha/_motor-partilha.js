@@ -181,12 +181,18 @@ function calcularIntervalo(dataAquisicao, marcos) {
 export function apurarAcervo({ bens, passivos, regimeBens, marcos }) {
   const ehParticipacaoFinal = regimeBens === 'participacao_final_aquestos'
   const alertas = []
+  // Espelho dos alertas que se referem a UM bem específico, guardando o bemId para
+  // que a linha do tempo possa repetir cada alerta no intervalo em que aquele bem
+  // caiu ("esse bem, nesse período, tem uma incoerência"). Os alertas continuam
+  // todos no array global `alertas` — este registro é só o índice por bem.
+  const alertasPorBem = []
+  const alertar = (bemId, texto) => { alertas.push(texto); alertasPorBem.push({ bemId, texto }) }
 
   const linhasBens = bens.map((bem) => {
     const c = classificarBem({ bem, regimeBens, marcos })
     const valorLiquido = arredonda2(bem.valorMercado - (bem.financiado ? bem.saldoDevedor || 0 : 0))
     if (c.classificacao === 'pendente') {
-      alertas.push(`Bem "${bem.descricao}" está pendente — falta informar ${c.campoFaltante}.`)
+      alertar(bem.id, `Bem "${bem.descricao}" está pendente — falta informar ${c.campoFaltante}.`)
     }
     return {
       bemId: bem.id, descricao: bem.descricao, tipo: bem.tipo, valorMercado: arredonda2(bem.valorMercado),
@@ -202,7 +208,7 @@ export function apurarAcervo({ bens, passivos, regimeBens, marcos }) {
     const naConstanciaTempo = linha.intervaloAquisicao === 'constancia'
     const formaComunicavel = bem.formaAquisicao === 'oneroso' || bem.formaAquisicao === 'fato_eventual'
     if (naConstanciaTempo && formaComunicavel && linha.classificacao === 'particular' && linha.origem !== 'override') {
-      alertas.push(`Bem "${bem.descricao}" foi adquirido durante a constância mas saiu particular — confira a classificação.`)
+      alertar(bem.id, `Bem "${bem.descricao}" foi adquirido durante a constância mas saiu particular — confira a classificação.`)
     }
   }
 
@@ -212,7 +218,7 @@ export function apurarAcervo({ bens, passivos, regimeBens, marcos }) {
       const linha = linhasBens.find((l) => l.bemId === bem.id)
       const comunicavelOuAquesto = linha.classificacao === 'comunicavel' || linha.classificacao?.startsWith('aquesto')
       if (linha.intervaloAquisicao === 'apos_fim_constancia' && linha.origem === 'override' && comunicavelOuAquesto) {
-        alertas.push(`Bem "${bem.descricao}" foi marcado comunicável mesmo adquirido após a separação de fato (override manual) — confira.`)
+        alertar(bem.id, `Bem "${bem.descricao}" foi marcado comunicável mesmo adquirido após a separação de fato (override manual) — confira.`)
       }
     }
   }
@@ -224,7 +230,7 @@ export function apurarAcervo({ bens, passivos, regimeBens, marcos }) {
     const limiteSuperior = marcos.dataAjuizamento ?? SENTINELA_SEM_FIM
     for (const bem of bens) {
       if (bem.dataAquisicao && bem.dataAquisicao >= marcos.dataSeparacaoFato && bem.dataAquisicao < limiteSuperior) {
-        alertas.push(`Bem "${bem.descricao}" adquirido após a separação de fato — verifique se deve integrar a partilha.`)
+        alertar(bem.id, `Bem "${bem.descricao}" adquirido após a separação de fato — verifique se deve integrar a partilha.`)
       }
     }
   }
@@ -268,16 +274,20 @@ export function apurarAcervo({ bens, passivos, regimeBens, marcos }) {
 
   const fim = fimConstancia(marcos)
   const bensNoIntervalo = (nome) => linhasBens.filter((l) => l.intervaloAquisicao === nome).map((l) => l.bemId)
+  const alertasNoIntervalo = (ids) => alertasPorBem.filter((a) => ids.includes(a.bemId)).map((a) => a.texto)
+  const idsAntes = bensNoIntervalo('antes_casamento')
+  const idsConstancia = bensNoIntervalo('constancia')
+  const idsApos = bensNoIntervalo('apos_fim_constancia')
   const linhaTempo = [
     {
       intervalo: 'antes_casamento', de: null, ate: marcos.dataCasamento,
       regraComunicacao: 'Bens anteriores ao casamento são particulares (exceto no regime de comunhão universal, salvo cláusula).',
-      bensNoIntervalo: bensNoIntervalo('antes_casamento'), alertas: [],
+      bensNoIntervalo: idsAntes, alertas: alertasNoIntervalo(idsAntes),
     },
     {
       intervalo: 'constancia', de: marcos.dataCasamento, ate: fim === SENTINELA_SEM_FIM ? null : fim,
       regraComunicacao: 'Bens adquiridos durante a constância seguem a regra do regime de bens.',
-      bensNoIntervalo: bensNoIntervalo('constancia'), alertas: [],
+      bensNoIntervalo: idsConstancia, alertas: alertasNoIntervalo(idsConstancia),
     },
   ]
   if (fim !== SENTINELA_SEM_FIM) {
@@ -286,7 +296,7 @@ export function apurarAcervo({ bens, passivos, regimeBens, marcos }) {
       regraComunicacao: marcos.separacaoFatoEfeito === 'corta_comunicacao'
         ? 'Bens adquiridos após a separação de fato não se comunicam (salvo reclassificação manual).'
         : 'Bens adquiridos após a separação de fato entram no acervo pela regra normal, mas são sinalizados para revisão.',
-      bensNoIntervalo: bensNoIntervalo('apos_fim_constancia'), alertas: [],
+      bensNoIntervalo: idsApos, alertas: alertasNoIntervalo(idsApos),
     })
   }
 
@@ -391,7 +401,15 @@ export function calcularQuinhoes({ regimeBens, linhasBens, totaisAcervo, aquesto
 /**
  * @returns {Array<{tipo:'ITBI'|'ITCMD', base:number, fundamento:string}>}
  */
-export function sinalizarTributario({ quadroQuinhoes, cenario }) {
+export function sinalizarTributario({ quadroQuinhoes, cenario, regimeBens }) {
+  // Na participação final nos aquestos o campo `torna` do quadro NÃO é excesso de
+  // meação sobre bens divididos desigualmente: é o crédito de compensação do
+  // CC art. 1.674/1.685, apurado por lei sobre patrimônios separados. Rotular esse
+  // crédito como "doação sujeita a ITCMD" seria uma afirmação jurídica errada num
+  // documento protocolado. O enquadramento tributário do crédito é questão distinta
+  // e fica fora do escopo do motor (que, por regra, nunca calcula valor de imposto).
+  if (regimeBens === 'participacao_final_aquestos') return []
+
   const excesso = Math.abs(quadroQuinhoes.parteA.torna)
   if (excesso <= 0.01) return []
 
@@ -428,7 +446,7 @@ export function calcularPartilha({ regimeBens, marcos, bens, passivos, cenario }
     regimeBens, linhasBens: acervo.linhasBens, totaisAcervo: acervo.totaisAcervo,
     aquestos: acervo.aquestos, passivos, cenario,
   })
-  const alertasTributarios = sinalizarTributario({ quadroQuinhoes: quinhoes.quadroQuinhoes, cenario })
+  const alertasTributarios = sinalizarTributario({ quadroQuinhoes: quinhoes.quadroQuinhoes, cenario, regimeBens })
   const somaTornas = arredonda2((cenario.tornas || []).reduce((s, t) => s + t.valor, 0))
 
   return {
