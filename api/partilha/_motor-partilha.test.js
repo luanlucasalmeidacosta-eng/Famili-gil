@@ -148,3 +148,64 @@ describe('classificarBem — separação total', () => {
     expect(r).toMatchObject({ classificacao: 'particular', regra: 'CC, art. 1.687' })
   })
 })
+
+describe('classificarBem — participação final nos aquestos', () => {
+  const regimeBens = 'participacao_final_aquestos'
+
+  it('oneroso na constância, titular parte_a → aquesto_a', () => {
+    const r = classificarBem({
+      bem: { formaAquisicao: 'oneroso', dataAquisicao: '2019-01-01', titular: 'parte_a' },
+      regimeBens, marcos: marcosPadrao,
+    })
+    expect(r).toMatchObject({ classificacao: 'aquesto_a', regra: 'CC, art. 1.674 (aquestos)' })
+  })
+
+  it('oneroso na constância, titular parte_b → aquesto_b', () => {
+    const r = classificarBem({
+      bem: { formaAquisicao: 'oneroso', dataAquisicao: '2019-01-01', titular: 'parte_b' },
+      regimeBens, marcos: marcosPadrao,
+    })
+    expect(r.classificacao).toBe('aquesto_b')
+  })
+
+  it('anterior ao casamento → fora_aquestos (art. 1.674, I)', () => {
+    const r = classificarBem({
+      bem: { formaAquisicao: 'oneroso', dataAquisicao: '2010-01-01', titular: 'parte_a' },
+      regimeBens, marcos: marcosPadrao,
+    })
+    expect(r).toMatchObject({ classificacao: 'fora_aquestos', regra: 'CC, art. 1.674, I' })
+  })
+
+  it('herança/doação/legado → fora_aquestos (art. 1.674, II)', () => {
+    const r = classificarBem({
+      bem: { formaAquisicao: 'heranca', dataAquisicao: '2019-01-01', titular: 'parte_a' },
+      regimeBens, marcos: marcosPadrao,
+    })
+    expect(r).toMatchObject({ classificacao: 'fora_aquestos', regra: 'CC, art. 1.674, II' })
+  })
+
+  it('sub-rogação → fora_aquestos (art. 1.674, I)', () => {
+    const r = classificarBem({
+      bem: { formaAquisicao: 'sub_rogacao', dataAquisicao: '2019-01-01', titular: 'parte_a' },
+      regimeBens, marcos: marcosPadrao,
+    })
+    expect(r).toMatchObject({ classificacao: 'fora_aquestos' })
+  })
+
+  it('titular ambos, oneroso na constância → fora_aquestos com regra específica', () => {
+    const r = classificarBem({
+      bem: { formaAquisicao: 'oneroso', dataAquisicao: '2019-01-01', titular: 'ambos' },
+      regimeBens, marcos: marcosPadrao,
+    })
+    expect(r.classificacao).toBe('fora_aquestos')
+    expect(r.regra).toContain('ambos')
+  })
+
+  it('oneroso sem data → pendente', () => {
+    const r = classificarBem({
+      bem: { formaAquisicao: 'oneroso', dataAquisicao: null, titular: 'parte_a' },
+      regimeBens, marcos: marcosPadrao,
+    })
+    expect(r).toMatchObject({ classificacao: 'pendente', campoFaltante: 'dataAquisicao' })
+  })
+})

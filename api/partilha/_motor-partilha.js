@@ -68,6 +68,39 @@ function classificarSeparacaoTotal(bem) {
     : { classificacao: 'particular', regra: 'CC, art. 1.687' }
 }
 
+function classificarParticipacaoFinal(bem, marcos) {
+  const { formaAquisicao, dataAquisicao, titular } = bem
+
+  if (dataAquisicao && dataAquisicao < marcos.dataCasamento) {
+    return { classificacao: 'fora_aquestos', regra: 'CC, art. 1.674, I' }
+  }
+  if (formaAquisicao === 'sub_rogacao') {
+    return { classificacao: 'fora_aquestos', regra: 'CC, art. 1.674, I' }
+  }
+  if (formaAquisicao === 'doacao' || formaAquisicao === 'heranca' || formaAquisicao === 'legado') {
+    return { classificacao: 'fora_aquestos', regra: 'CC, art. 1.674, II' }
+  }
+  if (formaAquisicao === 'beneficiaria_particular') {
+    return { classificacao: 'fora_aquestos', regra: 'CC, art. 1.674, II' }
+  }
+  if (formaAquisicao === 'oneroso' && naConstancia(dataAquisicao, marcos)) {
+    if (titular === 'ambos') {
+      return {
+        classificacao: 'fora_aquestos',
+        regra: 'CC, art. 1.674 (bem em nome de ambos tratado fora dos aquestos individuais — ver alerta)',
+      }
+    }
+    return {
+      classificacao: titular === 'parte_a' ? 'aquesto_a' : 'aquesto_b',
+      regra: 'CC, art. 1.674 (aquestos)',
+    }
+  }
+  if (formaAquisicao === 'oneroso') {
+    return { classificacao: 'pendente', campoFaltante: 'dataAquisicao' }
+  }
+  return { classificacao: 'pendente', campoFaltante: 'formaAquisicao' }
+}
+
 /**
  * @returns {{classificacao:'comunicavel'|'particular'|'pendente', regra:string,
  *   citacao:string, origem:'automatica'|'override'|'pendente', campoFaltante?:string}}
@@ -93,7 +126,7 @@ export function classificarBem({ bem, regimeBens, marcos }) {
   } else if (regimeBens === 'separacao_total') {
     resultado = classificarSeparacaoTotal(bem)
   } else if (regimeBens === 'participacao_final_aquestos') {
-    throw new Error('regimeBens participacao_final_aquestos ainda não implementado neste motor (Task 5)')
+    resultado = classificarParticipacaoFinal(bem, marcos)
   } else {
     throw new Error(`regimeBens inválido: ${regimeBens}`)
   }
