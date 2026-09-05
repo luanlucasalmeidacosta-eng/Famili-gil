@@ -8,6 +8,8 @@
 //
 // Isolamento: este arquivo NUNCA importa de api/pensao/*.
 
+import { arredonda2 } from '../_core/dinheiro.js'
+
 const SENTINELA_SEM_FIM = '9999-12-31' // "constância" sem marco de fim informado
 
 function fimConstancia(marcos) {
@@ -135,4 +137,139 @@ export function classificarBem({ bem, regimeBens, marcos }) {
     return { classificacao: 'pendente', regra: '—', citacao: '—', origem: 'pendente', campoFaltante: resultado.campoFaltante }
   }
   return { ...resultado, citacao: resultado.regra, origem: 'automatica' }
+}
+
+function passivoDedutivelComum(passivo, regimeBens, linhasBens) {
+  const bemVinculado = passivo.bemVinculadoId ? linhasBens.find((l) => l.bemId === passivo.bemVinculadoId) : null
+  if (regimeBens === 'comunhao_parcial') {
+    if (passivo.natureza !== 'constancia_proveito_comum' && passivo.natureza !== 'tributo_de_bem') return false
+    if (bemVinculado && bemVinculado.classificacao !== 'comunicavel') return false
+    return true
+  }
+  if (regimeBens === 'comunhao_universal') {
+    return passivo.natureza !== 'anterior_casamento'
+  }
+  if (regimeBens === 'separacao_total') {
+    return !!bemVinculado && bemVinculado.classificacao === 'comunicavel'
+  }
+  return false // participacao_final_aquestos não usa este caminho
+}
+
+function calcularIntervalo(dataAquisicao, marcos) {
+  if (!dataAquisicao) return null
+  if (dataAquisicao < marcos.dataCasamento) return 'antes_casamento'
+  if (dataAquisicao < fimConstancia(marcos)) return 'constancia'
+  return 'apos_fim_constancia'
+}
+
+/**
+ * @returns {{linhasBens: Array, totaisAcervo: {acervoBruto:number,passivosDedutiveis:number,acervoLiquido:number},
+ *   aquestos: {a:number,b:number}|null, linhaTempo: Array, alertas: string[]}}
+ */
+export function apurarAcervo({ bens, passivos, regimeBens, marcos }) {
+  const ehParticipacaoFinal = regimeBens === 'participacao_final_aquestos'
+  const alertas = []
+
+  const linhasBens = bens.map((bem) => {
+    const c = classificarBem({ bem, regimeBens, marcos })
+    const valorLiquido = arredonda2(bem.valorMercado - (bem.financiado ? bem.saldoDevedor || 0 : 0))
+    if (c.classificacao === 'pendente') {
+      alertas.push(`Bem "${bem.descricao}" está pendente — falta informar ${c.campoFaltante}.`)
+    }
+    return {
+      bemId: bem.id, descricao: bem.descricao, tipo: bem.tipo, valorMercado: arredonda2(bem.valorMercado),
+      financiado: !!bem.financiado, saldoDevedor: bem.saldoDevedor ?? null, valorLiquido,
+      classificacao: c.classificacao, regra: c.regra, citacao: c.citacao, origem: c.origem,
+      campoFaltante: c.campoFaltante, intervaloAquisicao: calcularIntervalo(bem.dataAquisicao, marcos),
+    }
+  })
+
+  // incoerência: oneroso/fato_eventual na constância mas saiu particular sem override
+  for (const bem of bens) {
+    const linha = linhasBens.find((l) => l.bemId === bem.id)
+    const naConstanciaTempo = linha.intervaloAquisicao === 'constancia'
+    const formaComunicavel = bem.formaAquisicao === 'oneroso' || bem.formaAquisicao === 'fato_eventual'
+    if (naConstanciaTempo && formaComunicavel && linha.classificacao === 'particular' && linha.origem !== 'override') {
+      alertas.push(`Bem "${bem.descricao}" foi adquirido durante a constância mas saiu particular — confira a classificação.`)
+    }
+  }
+
+  // separação de fato — corta_comunicacao: override comunicável após o corte gera alerta
+  if (marcos.separacaoFatoEfeito === 'corta_comunicacao' && marcos.dataSeparacaoFato) {
+    for (const bem of bens) {
+      const linha = linhasBens.find((l) => l.bemId === bem.id)
+      const comunicavelOuAquesto = linha.classificacao === 'comunicavel' || linha.classificacao?.startsWith('aquesto')
+      if (linha.intervaloAquisicao === 'apos_fim_constancia' && linha.origem === 'override' && comunicavelOuAquesto) {
+        alertas.push(`Bem "${bem.descricao}" foi marcado comunicável mesmo adquirido após a separação de fato (override manual) — confira.`)
+      }
+    }
+  }
+  // separação de fato — apenas_alerta: todo bem no intervalo pós-separação gera aviso, sempre
+  if (marcos.separacaoFatoEfeito === 'apenas_alerta' && marcos.dataSeparacaoFato) {
+    for (const bem of bens) {
+      if (bem.dataAquisicao && bem.dataAquisicao >= marcos.dataSeparacaoFato) {
+        alertas.push(`Bem "${bem.descricao}" adquirido após a separação de fato — verifique se deve integrar a partilha.`)
+      }
+    }
+  }
+
+  let acervoBruto = 0
+  let passivosDedutiveis = 0
+  let aquestos = null
+
+  if (ehParticipacaoFinal) {
+    let a = 0
+    let b = 0
+    for (const linha of linhasBens) {
+      if (linha.classificacao === 'aquesto_a') a += linha.valorLiquido
+      if (linha.classificacao === 'aquesto_b') b += linha.valorLiquido
+    }
+    for (const passivo of passivos) {
+      if (passivo.natureza === 'anterior_casamento' || passivo.natureza === 'ato_ilicito') continue
+      if (passivo.responsavel === 'parte_a') a -= passivo.valor
+      else if (passivo.responsavel === 'parte_b') b -= passivo.valor
+      else { a -= passivo.valor / 2; b -= passivo.valor / 2 }
+    }
+    aquestos = { a: arredonda2(a), b: arredonda2(b) }
+  } else {
+    acervoBruto = arredonda2(linhasBens
+      .filter((l) => l.classificacao === 'comunicavel')
+      .reduce((s, l) => s + l.valorMercado, 0))
+    passivosDedutiveis = arredonda2(passivos
+      .filter((p) => passivoDedutivelComum(p, regimeBens, linhasBens))
+      .reduce((s, p) => s + p.valor, 0))
+  }
+
+  const fim = fimConstancia(marcos)
+  const bensNoIntervalo = (nome) => linhasBens.filter((l) => l.intervaloAquisicao === nome).map((l) => l.bemId)
+  const linhaTempo = [
+    {
+      intervalo: 'antes_casamento', de: null, ate: marcos.dataCasamento,
+      regraComunicacao: 'Bens anteriores ao casamento são particulares (exceto no regime de comunhão universal, salvo cláusula).',
+      bensNoIntervalo: bensNoIntervalo('antes_casamento'), alertas: [],
+    },
+    {
+      intervalo: 'constancia', de: marcos.dataCasamento, ate: fim === SENTINELA_SEM_FIM ? null : fim,
+      regraComunicacao: 'Bens adquiridos durante a constância seguem a regra do regime de bens.',
+      bensNoIntervalo: bensNoIntervalo('constancia'), alertas: [],
+    },
+  ]
+  if (fim !== SENTINELA_SEM_FIM) {
+    linhaTempo.push({
+      intervalo: 'apos_fim_constancia', de: fim, ate: null,
+      regraComunicacao: marcos.separacaoFatoEfeito === 'corta_comunicacao'
+        ? 'Bens adquiridos após a separação de fato não se comunicam (salvo reclassificação manual).'
+        : 'Bens adquiridos após a separação de fato entram no acervo pela regra normal, mas são sinalizados para revisão.',
+      bensNoIntervalo: bensNoIntervalo('apos_fim_constancia'), alertas: [],
+    })
+  }
+
+  return {
+    linhasBens,
+    totaisAcervo: {
+      acervoBruto, passivosDedutiveis,
+      acervoLiquido: arredonda2(acervoBruto - passivosDedutiveis),
+    },
+    aquestos, linhaTempo, alertas,
+  }
 }
