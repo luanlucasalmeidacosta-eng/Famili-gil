@@ -270,6 +270,17 @@ describe('apurarAcervo — separação de fato, modo apenas_alerta', () => {
     expect(r.linhasBens[0].classificacao).toBe('comunicavel') // entra normalmente
     expect(r.alertas.some((a) => a.includes('após a separação de fato'))).toBe(true)
   })
+
+  it('bem adquirido além do ajuizamento fica fora da janela — não gera o alerta', () => {
+    const bens = [
+      { id: 'b1', descricao: 'Terreno pós-ajuizamento', tipo: 'imovel', valorMercado: 100000, dataAquisicao: '2024-06-01', formaAquisicao: 'oneroso', titular: 'parte_a', financiado: false },
+    ]
+    const r = apurarAcervo({
+      bens, passivos: [], regimeBens: 'comunhao_parcial',
+      marcos: { dataCasamento: '2015-01-01', dataSeparacaoFato: '2022-06-01', dataAjuizamento: '2024-01-01', separacaoFatoEfeito: 'apenas_alerta' },
+    })
+    expect(r.alertas.some((a) => a.includes('após a separação de fato'))).toBe(false)
+  })
 })
 
 describe('apurarAcervo — participação final nos aquestos', () => {

@@ -204,10 +204,14 @@ export function apurarAcervo({ bens, passivos, regimeBens, marcos }) {
       }
     }
   }
-  // separação de fato — apenas_alerta: todo bem no intervalo pós-separação gera aviso, sempre
+  // separação de fato — apenas_alerta: todo bem cuja dataAquisicao cai na janela
+  // [dataSeparacaoFato, dataAjuizamento/sentinela) gera aviso, sempre — mesmo limite
+  // superior exclusivo usado em naConstancia/fimConstancia, pra manter o mesmo estilo
+  // de comparação lexicográfica de datas ISO do resto do arquivo.
   if (marcos.separacaoFatoEfeito === 'apenas_alerta' && marcos.dataSeparacaoFato) {
+    const limiteSuperior = marcos.dataAjuizamento ?? SENTINELA_SEM_FIM
     for (const bem of bens) {
-      if (bem.dataAquisicao && bem.dataAquisicao >= marcos.dataSeparacaoFato) {
+      if (bem.dataAquisicao && bem.dataAquisicao >= marcos.dataSeparacaoFato && bem.dataAquisicao < limiteSuperior) {
         alertas.push(`Bem "${bem.descricao}" adquirido após a separação de fato — verifique se deve integrar a partilha.`)
       }
     }
