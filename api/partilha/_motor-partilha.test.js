@@ -405,3 +405,31 @@ describe('sinalizarTributario', () => {
     ])
   })
 })
+
+import { calcularPartilha } from './_motor-partilha.js'
+
+describe('calcularPartilha', () => {
+  const entrada = {
+    regimeBens: 'comunhao_parcial',
+    marcos: { dataCasamento: '2015-01-01', dataSeparacaoFato: null, separacaoFatoEfeito: 'corta_comunicacao' },
+    bens: [
+      { id: 'b1', descricao: 'Casa', tipo: 'imovel', valorMercado: 400000, dataAquisicao: '2018-01-01', formaAquisicao: 'oneroso', titular: 'parte_a', financiado: false },
+    ],
+    passivos: [],
+    cenario: { pctParteA: 50, alocacoes: [{ bemId: 'b1', para: 'parte_a' }], tornas: [{ de: 'parte_a', para: 'parte_b', valor: 200000, forma: 'dinheiro' }] },
+  }
+
+  it('monta o contrato completo: linhasBens, quadroQuinhoes, linhaTempo, alertasTributarios, totais, alertas', () => {
+    const r = calcularPartilha(entrada)
+    expect(r.linhasBens[0]).toMatchObject({ bemId: 'b1', classificacao: 'comunicavel', alocadoPara: 'parte_a', quinhaoValor: 400000 })
+    expect(r.quadroQuinhoes.parteA.torna).toBe(200000)
+    expect(r.linhaTempo.length).toBeGreaterThan(0)
+    expect(r.alertasTributarios).toEqual([{ tipo: 'ITBI', base: 200000, fundamento: expect.stringContaining('Súmula 116') }])
+    expect(r.totais).toEqual({ acervoBruto: 400000, passivosDedutiveis: 0, acervoLiquido: 400000, somaTornas: 200000 })
+    expect(r.alertas).toEqual([])
+  })
+
+  it('determinístico: dois runs → JSON idêntico', () => {
+    expect(JSON.stringify(calcularPartilha(entrada))).toBe(JSON.stringify(calcularPartilha(entrada)))
+  })
+})

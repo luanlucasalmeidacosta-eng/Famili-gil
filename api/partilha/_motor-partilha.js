@@ -394,3 +394,27 @@ export function sinalizarTributario({ quadroQuinhoes, cenario }) {
   }
   return alertasTributarios
 }
+
+/**
+ * Orquestrador: compõe apurarAcervo -> calcularQuinhoes -> sinalizarTributario.
+ * @returns {{linhasBens: Array, quadroQuinhoes: object, linhaTempo: Array,
+ *   alertasTributarios: Array, totais: object, alertas: string[]}}
+ */
+export function calcularPartilha({ regimeBens, marcos, bens, passivos, cenario }) {
+  const acervo = apurarAcervo({ bens, passivos, regimeBens, marcos })
+  const quinhoes = calcularQuinhoes({
+    regimeBens, linhasBens: acervo.linhasBens, totaisAcervo: acervo.totaisAcervo,
+    aquestos: acervo.aquestos, passivos, cenario,
+  })
+  const alertasTributarios = sinalizarTributario({ quadroQuinhoes: quinhoes.quadroQuinhoes, cenario })
+  const somaTornas = arredonda2((cenario.tornas || []).reduce((s, t) => s + t.valor, 0))
+
+  return {
+    linhasBens: quinhoes.linhasBens,
+    quadroQuinhoes: quinhoes.quadroQuinhoes,
+    linhaTempo: acervo.linhaTempo,
+    alertasTributarios,
+    totais: { ...acervo.totaisAcervo, somaTornas },
+    alertas: [...acervo.alertas, ...quinhoes.alertas],
+  }
+}
