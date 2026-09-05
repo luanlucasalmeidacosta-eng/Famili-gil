@@ -60,3 +60,79 @@ export async function pensaoParaDocx(memoria, caso) {
   const buf = await Packer.toBuffer(doc)
   return new Uint8Array(buf)
 }
+
+const ROTULOS_REGIME = {
+  comunhao_parcial: 'Comunhão parcial de bens',
+  comunhao_universal: 'Comunhão universal de bens',
+  separacao_total: 'Separação convencional total',
+  participacao_final_aquestos: 'Participação final nos aquestos',
+}
+
+/** @returns {Promise<Uint8Array>} */
+export async function partilhaParaDocx(memoria, caso) {
+  const config = memoria.entradas_snapshot?.config || {}
+  const linhas = memoria.linhas_bens || []
+  const fundamentosBens = [...new Set(linhas.map((l) => l.citacao).filter(Boolean))]
+
+  const header = [
+    new Paragraph({ text: 'Memória de Partilha de Bens', heading: HeadingLevel.HEADING_1 }),
+    new Paragraph(`Parte A: ${caso.parte_a || '—'}   Parte B: ${caso.parte_b || '—'}`),
+    new Paragraph(`Processo: ${caso.numero_processo || '—'}   Versão: ${memoria.versao}`),
+    new Paragraph(`Regime de bens: ${ROTULOS_REGIME[config.regime_bens] || config.regime_bens || '—'}`),
+    new Paragraph(`Casamento: ${config.data_casamento || '—'}   Separação de fato: ${config.data_separacao_fato || '—'}   Ajuizamento: ${config.data_ajuizamento || '—'}`),
+    new Paragraph(''),
+  ]
+
+  const tabelaBens = new Table({
+    rows: [
+      new TableRow({ children: ['Descrição', 'Tipo', 'Valor', 'Líquido', 'Classificação', 'Fundamento', 'Alocado para'].map(cel) }),
+      ...linhas.map((l) => new TableRow({
+        children: [
+          l.descricao, l.tipo, brl(l.valorMercado), brl(l.valorLiquido),
+          l.classificacao, l.citacao || '—', l.alocadoPara || '—',
+        ].map(cel),
+      })),
+    ],
+  })
+
+  const q = memoria.quadro_quinhoes
+  const tabelaQuinhoes = new Table({
+    rows: [
+      new TableRow({ children: ['', 'Acervo/aquestos', 'Quinhão ideal', 'Valor alocado', 'Torna'].map(cel) }),
+      new TableRow({ children: ['Parte A', brl(q.parteA.acervoLiquido), q.parteA.quinhaoIdealValor != null ? brl(q.parteA.quinhaoIdealValor) : '—', brl(q.parteA.valorAlocado), brl(q.parteA.torna)].map(cel) }),
+      new TableRow({ children: ['Parte B', brl(q.parteB.acervoLiquido), q.parteB.quinhaoIdealValor != null ? brl(q.parteB.quinhaoIdealValor) : '—', brl(q.parteB.valorAlocado), brl(q.parteB.torna)].map(cel) }),
+    ],
+  })
+
+  const tributario = (memoria.alertas_tributarios || []).length
+    ? [
+        new Paragraph({ text: 'Enquadramento tributário', heading: HeadingLevel.HEADING_2 }),
+        ...memoria.alertas_tributarios.map((t) => new Paragraph(`• ${t.tipo} sobre R$ ${brl(t.base)} — ${t.fundamento}`)),
+        new Paragraph({ children: [new TextRun({ text: 'O valor do imposto NÃO é calculado aqui — alíquota é municipal/estadual e varia.', italics: true })] }),
+      ]
+    : []
+
+  const linhaTempo = [
+    new Paragraph({ text: 'Linha do tempo', heading: HeadingLevel.HEADING_2 }),
+    ...(memoria.linha_tempo || []).map((t) => new Paragraph(`• ${t.intervalo}: ${t.regraComunicacao}`)),
+  ]
+
+  const fundPartilha = [
+    new Paragraph(''),
+    new Paragraph({ text: 'Fundamentos', heading: HeadingLevel.HEADING_2 }),
+    ...fundamentosBens.map((f) => new Paragraph(`• ${f}`)),
+  ]
+  const alertasGerais = (memoria.alertas || []).length
+    ? [new Paragraph({ text: 'Alertas', heading: HeadingLevel.HEADING_2 }), ...memoria.alertas.map((a) => new Paragraph(`• ${a}`))]
+    : []
+  const rodapePartilha = [
+    new Paragraph(''),
+    new Paragraph({ children: [new TextRun({ text: 'Documento editável — confira os valores antes de protocolar.', italics: true })] }),
+  ]
+
+  const doc = new Document({
+    sections: [{ children: [...header, tabelaBens, new Paragraph(''), tabelaQuinhoes, new Paragraph(''), ...tributario, ...linhaTempo, ...fundPartilha, ...alertasGerais, ...rodapePartilha] }],
+  })
+  const bufPartilha = await Packer.toBuffer(doc)
+  return new Uint8Array(bufPartilha)
+}

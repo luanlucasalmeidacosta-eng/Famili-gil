@@ -31,3 +31,38 @@ export async function pensaoParaXlsx(memoria, caso) {
   const buf = await wb.xlsx.writeBuffer()
   return new Uint8Array(buf)
 }
+
+/** @returns {Promise<Uint8Array>} */
+export async function partilhaParaXlsx(memoria, caso) {
+  const wb = new ExcelJS.Workbook()
+
+  const wsBens = wb.addWorksheet('Bens')
+  wsBens.addRow([`Parte A: ${caso.parte_a || ''}`, `Parte B: ${caso.parte_b || ''}`])
+  wsBens.addRow(['Descrição', 'Tipo', 'Valor de mercado', 'Saldo devedor', 'Valor líquido', 'Classificação', 'Alocado para'])
+  for (const l of memoria.linhas_bens || []) {
+    const row = wsBens.addRow([l.descricao, l.tipo, l.valorMercado, l.saldoDevedor || 0, null, l.classificacao, l.alocadoPara || '—'])
+    row.getCell(5).value = { formula: `C${row.number}-D${row.number}` }
+  }
+
+  const wsQuinhoes = wb.addWorksheet('Quinhões')
+  const q = memoria.quadro_quinhoes
+  wsQuinhoes.addRow(['', 'Acervo/aquestos', 'Quinhão ideal', 'Valor alocado', 'Torna'])
+  const linhaA = wsQuinhoes.addRow(['Parte A', q.parteA.acervoLiquido, q.parteA.quinhaoIdealValor, q.parteA.valorAlocado, null])
+  linhaA.getCell(5).value = { formula: `D${linhaA.number}-C${linhaA.number}` }
+  const linhaB = wsQuinhoes.addRow(['Parte B', q.parteB.acervoLiquido, q.parteB.quinhaoIdealValor, q.parteB.valorAlocado, null])
+  linhaB.getCell(5).value = { formula: `D${linhaB.number}-C${linhaB.number}` }
+
+  const wsCenario = wb.addWorksheet('Cenário')
+  wsCenario.addRow(['Acervo bruto', memoria.totais.acervoBruto])
+  wsCenario.addRow(['Passivos dedutíveis', memoria.totais.passivosDedutiveis])
+  wsCenario.addRow(['Acervo líquido', memoria.totais.acervoLiquido])
+  wsCenario.addRow(['Soma das tornas informadas', memoria.totais.somaTornas])
+
+  const wsTrib = wb.addWorksheet('Tributário')
+  wsTrib.addRow(['Tipo', 'Base (R$)', 'Fundamento'])
+  for (const t of memoria.alertas_tributarios || []) wsTrib.addRow([t.tipo, t.base, t.fundamento])
+  wsTrib.addRow(['Nota: o valor do imposto NÃO é calculado aqui — alíquota é municipal/estadual e varia.'])
+
+  const bufPartilha = await wb.xlsx.writeBuffer()
+  return new Uint8Array(bufPartilha)
+}
