@@ -92,3 +92,59 @@ describe('classificarBem — comunhão parcial', () => {
     expect(r).toMatchObject({ classificacao: 'comunicavel', origem: 'override' })
   })
 })
+
+describe('classificarBem — comunhão universal', () => {
+  const regimeBens = 'comunhao_universal'
+
+  it('comunicável por padrão (art. 1.667)', () => {
+    const r = classificarBem({
+      bem: { formaAquisicao: 'oneroso', dataAquisicao: '2019-01-01', titular: 'parte_a', clausulaIncomunicabilidade: false },
+      regimeBens, marcos: marcosPadrao,
+    })
+    expect(r).toMatchObject({ classificacao: 'comunicavel', regra: 'CC, art. 1.667' })
+  })
+
+  it('cláusula de incomunicabilidade → particular (art. 1.668, I)', () => {
+    const r = classificarBem({
+      bem: { formaAquisicao: 'heranca', dataAquisicao: '2019-01-01', titular: 'parte_a', clausulaIncomunicabilidade: true },
+      regimeBens, marcos: marcosPadrao,
+    })
+    expect(r).toMatchObject({ classificacao: 'particular', regra: 'CC, art. 1.668, I' })
+  })
+
+  it('sub-rogação → particular (art. 1.668, I)', () => {
+    const r = classificarBem({
+      bem: { formaAquisicao: 'sub_rogacao', dataAquisicao: '2019-01-01', titular: 'parte_a', clausulaIncomunicabilidade: false },
+      regimeBens, marcos: marcosPadrao,
+    })
+    expect(r).toMatchObject({ classificacao: 'particular', regra: 'CC, art. 1.668, I' })
+  })
+
+  it('bem de uso pessoal → particular (art. 1.668, V)', () => {
+    const r = classificarBem({
+      bem: { formaAquisicao: 'beneficiaria_particular', dataAquisicao: '2019-01-01', titular: 'parte_a', clausulaIncomunicabilidade: false },
+      regimeBens, marcos: marcosPadrao,
+    })
+    expect(r).toMatchObject({ classificacao: 'particular', regra: 'CC, art. 1.668, V' })
+  })
+})
+
+describe('classificarBem — separação total', () => {
+  const regimeBens = 'separacao_total'
+
+  it('titular ambos → comunicável, condomínio (art. 1.687)', () => {
+    const r = classificarBem({
+      bem: { formaAquisicao: 'oneroso', dataAquisicao: '2019-01-01', titular: 'ambos' },
+      regimeBens, marcos: marcosPadrao,
+    })
+    expect(r).toMatchObject({ classificacao: 'comunicavel', regra: 'CC, art. 1.687 (condomínio, CC art. 1.314)' })
+  })
+
+  it('titular único → particular (art. 1.687)', () => {
+    const r = classificarBem({
+      bem: { formaAquisicao: 'oneroso', dataAquisicao: '2019-01-01', titular: 'parte_a' },
+      regimeBens, marcos: marcosPadrao,
+    })
+    expect(r).toMatchObject({ classificacao: 'particular', regra: 'CC, art. 1.687' })
+  })
+})

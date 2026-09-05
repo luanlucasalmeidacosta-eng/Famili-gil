@@ -51,6 +51,23 @@ function classificarComunhaoParcial(bem, marcos) {
   return { classificacao: 'pendente', campoFaltante: 'formaAquisicao' }
 }
 
+function classificarComunhaoUniversal(bem) {
+  const { formaAquisicao, clausulaIncomunicabilidade } = bem
+  if (clausulaIncomunicabilidade || formaAquisicao === 'sub_rogacao') {
+    return { classificacao: 'particular', regra: 'CC, art. 1.668, I' }
+  }
+  if (formaAquisicao === 'beneficiaria_particular') {
+    return { classificacao: 'particular', regra: 'CC, art. 1.668, V' }
+  }
+  return { classificacao: 'comunicavel', regra: 'CC, art. 1.667' }
+}
+
+function classificarSeparacaoTotal(bem) {
+  return bem.titular === 'ambos'
+    ? { classificacao: 'comunicavel', regra: 'CC, art. 1.687 (condomínio, CC art. 1.314)' }
+    : { classificacao: 'particular', regra: 'CC, art. 1.687' }
+}
+
 /**
  * @returns {{classificacao:'comunicavel'|'particular'|'pendente', regra:string,
  *   citacao:string, origem:'automatica'|'override'|'pendente', campoFaltante?:string}}
@@ -71,8 +88,14 @@ export function classificarBem({ bem, regimeBens, marcos }) {
   let resultado
   if (regimeBens === 'comunhao_parcial') {
     resultado = classificarComunhaoParcial(bem, marcos)
+  } else if (regimeBens === 'comunhao_universal') {
+    resultado = classificarComunhaoUniversal(bem)
+  } else if (regimeBens === 'separacao_total') {
+    resultado = classificarSeparacaoTotal(bem)
+  } else if (regimeBens === 'participacao_final_aquestos') {
+    throw new Error('regimeBens participacao_final_aquestos ainda não implementado neste motor (Task 5)')
   } else {
-    throw new Error(`regimeBens ainda não implementado neste motor: ${regimeBens}`)
+    throw new Error(`regimeBens inválido: ${regimeBens}`)
   }
 
   if (resultado.classificacao === 'pendente') {
