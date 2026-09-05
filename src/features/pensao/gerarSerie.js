@@ -3,14 +3,7 @@
 // Gera a série de parcelas a partir da "regra" da pensão. Função PURA e
 // determinística — usada pela AbaParcelas e testada isolada.
 
-function arredonda2(n) {
-  // normaliza para 3 casas (toFixed arredonda o double real corretamente),
-  // depois decide o centavo pelo milésimo em aritmética inteira.
-  const milesimos = Math.round(Number(n.toFixed(3)) * 1000)
-  const resto = ((milesimos % 10) + 10) % 10
-  const base = milesimos - (milesimos % 10)
-  return (resto >= 5 ? base + 10 : base) / 1000
-}
+import { arredonda2 } from '../../../api/_core/dinheiro.js'
 
 function ultimoDiaDoMes(ano, mes1) {
   // mes1: 1-based. Date.UTC(ano, mes1, 0) = último dia do mês mes1.

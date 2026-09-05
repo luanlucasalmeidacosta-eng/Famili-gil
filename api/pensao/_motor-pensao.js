@@ -5,17 +5,10 @@
 // sem aleatoriedade. Recebe as séries de índice já resolvidas. Mesmo input =>
 // mesma saída, byte a byte.
 
-export const FRONTEIRA_LEI = '2024-08-30' // 1º dia do regime pós-Lei 14.905/2024
+import { arredonda2 } from '../_core/dinheiro.js'
+export { arredonda2 }
 
-/** 2 casas decimais, meio para cima, robusto a artefato de ponto flutuante. */
-export function arredonda2(n) {
-  // normaliza para 3 casas (toFixed arredonda o double real corretamente),
-  // depois decide o centavo pelo milésimo em aritmética inteira.
-  const milesimos = Math.round(Number(n.toFixed(3)) * 1000)
-  const resto = ((milesimos % 10) + 10) % 10
-  const base = milesimos - (milesimos % 10)
-  return (resto >= 5 ? base + 10 : base) / 1000
-}
+export const FRONTEIRA_LEI = '2024-08-30' // 1º dia do regime pós-Lei 14.905/2024
 
 function ms(iso) {
   return Date.parse(`${iso}T00:00:00Z`) // ISO com Z: determinístico, sem timezone
