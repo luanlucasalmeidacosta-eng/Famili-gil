@@ -230,7 +230,9 @@ describe('apurarAcervo — comunhão parcial', () => {
     // só b1 é comunicável (oneroso na constância); b2 é herança pra um só (particular); b3 é pendente
     expect(r.totaisAcervo.acervoBruto).toBe(500000)
     expect(r.totaisAcervo.passivosDedutiveis).toBe(20000) // só p1 (proveito comum); p2 é anterior ao casamento
-    expect(r.totaisAcervo.acervoLiquido).toBe(480000) // 500000 - 20000 (financiamento entra no valorLiquido do bem, não aqui)
+    // acervoLiquido parte do valorLiquido dos comunicáveis (mesma base da alocação
+    // em calcularQuinhoes): 400000 (500000 - 100000 de saldo devedor) - 20000 de passivo
+    expect(r.totaisAcervo.acervoLiquido).toBe(380000)
     expect(r.linhasBens.find((l) => l.bemId === 'b1').valorLiquido).toBe(400000) // 500000 - 100000 financiado
   })
 
@@ -292,6 +294,16 @@ describe('apurarAcervo — participação final nos aquestos', () => {
     const passivos = [{ id: 'p1', valor: 50000, natureza: 'constancia_particular', responsavel: 'parte_a', bemVinculadoId: null }]
     const r = apurarAcervo({ bens, passivos, regimeBens: 'participacao_final_aquestos', marcos: marcosComSeparacao })
     expect(r.aquestos).toEqual({ a: 250000, b: 200000 })
+  })
+
+  it('totaisAcervo não fica zerado: soma dos dois aquestos (não some no export)', () => {
+    const bens = [
+      { id: 'b1', descricao: 'Loja de A', tipo: 'empresa', valorMercado: 300000, dataAquisicao: '2018-01-01', formaAquisicao: 'oneroso', titular: 'parte_a', financiado: false },
+      { id: 'b2', descricao: 'Apê de B', tipo: 'imovel', valorMercado: 200000, dataAquisicao: '2019-01-01', formaAquisicao: 'oneroso', titular: 'parte_b', financiado: false },
+    ]
+    const passivos = [{ id: 'p1', valor: 50000, natureza: 'constancia_particular', responsavel: 'parte_a', bemVinculadoId: null }]
+    const r = apurarAcervo({ bens, passivos, regimeBens: 'participacao_final_aquestos', marcos: marcosComSeparacao })
+    expect(r.totaisAcervo).toEqual({ acervoBruto: 450000, passivosDedutiveis: 0, acervoLiquido: 450000 })
   })
 })
 
@@ -431,5 +443,46 @@ describe('calcularPartilha', () => {
 
   it('determinístico: dois runs → JSON idêntico', () => {
     expect(JSON.stringify(calcularPartilha(entrada))).toBe(JSON.stringify(calcularPartilha(entrada)))
+  })
+})
+
+describe('calcularPartilha — bem financiado fecha o balanço das tornas', () => {
+  // Cenário real mais comum da partilha: casa financiada alocada a uma das partes.
+  // O acervo líquido e a alocação precisam partir da MESMA base (valorLiquido),
+  // senão tornaA + tornaB = -Σ(saldoDevedor) em vez de zero.
+  const entradaFinanciada = {
+    regimeBens: 'comunhao_parcial',
+    marcos: { dataCasamento: '2015-01-01', dataSeparacaoFato: null, separacaoFatoEfeito: 'corta_comunicacao' },
+    bens: [
+      { id: 'b1', descricao: 'Casa financiada', tipo: 'imovel', valorMercado: 500000, dataAquisicao: '2018-01-01', formaAquisicao: 'oneroso', titular: 'parte_a', financiado: true, saldoDevedor: 200000 },
+    ],
+    passivos: [],
+    cenario: { pctParteA: 50, alocacoes: [{ bemId: 'b1', para: 'parte_a' }], tornas: [] },
+  }
+
+  it('acervo líquido usa o valor líquido do bem financiado', () => {
+    const r = calcularPartilha(entradaFinanciada)
+    expect(r.totais.acervoBruto).toBe(500000)
+    expect(r.totais.acervoLiquido).toBe(300000) // 500000 - 200000 de saldo devedor
+  })
+
+  it('tornaA + tornaB === 0 (o que uma parte recebe a mais a outra recebe a menos)', () => {
+    const r = calcularPartilha(entradaFinanciada)
+    expect(r.quadroQuinhoes.parteA.torna).toBe(150000)
+    expect(r.quadroQuinhoes.parteB.torna).toBe(-150000)
+    expect(r.quadroQuinhoes.parteA.torna + r.quadroQuinhoes.parteB.torna).toBe(0)
+  })
+
+  it('com passivo dedutível o balanço continua fechando', () => {
+    const r = calcularPartilha({
+      ...entradaFinanciada,
+      passivos: [{ id: 'p1', valor: 40000, natureza: 'constancia_proveito_comum', responsavel: 'ambos', bemVinculadoId: null }],
+    })
+    // acervoLiquido = 300000 - 40000 = 260000; cada quinhão ideal = 130000
+    // alocado A = 300000 - 20000 = 280000; alocado B = 0 - 20000 = -20000
+    expect(r.totais.acervoLiquido).toBe(260000)
+    expect(r.quadroQuinhoes.parteA.torna).toBe(150000)
+    expect(r.quadroQuinhoes.parteB.torna).toBe(-150000)
+    expect(r.quadroQuinhoes.parteA.torna + r.quadroQuinhoes.parteB.torna).toBe(0)
   })
 })

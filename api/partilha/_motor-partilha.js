@@ -218,6 +218,11 @@ export function apurarAcervo({ bens, passivos, regimeBens, marcos }) {
   }
 
   let acervoBruto = 0
+  // soma dos valorLiquido (já descontado o saldo devedor de bens financiados) dos
+  // comunicáveis — MESMA base que calcularQuinhoes usa pra alocar. Se o acervo
+  // partisse do valorMercado enquanto a alocação parte do valorLiquido, tornaA +
+  // tornaB daria -Σ(saldoDevedor) em vez de zero em qualquer caso com bem financiado.
+  let acervoLiquidoBens = 0
   let passivosDedutiveis = 0
   let aquestos = null
 
@@ -235,10 +240,15 @@ export function apurarAcervo({ bens, passivos, regimeBens, marcos }) {
       else { a -= passivo.valor / 2; b -= passivo.valor / 2 }
     }
     aquestos = { a: arredonda2(a), b: arredonda2(b) }
+    // participação final não tem acervo comum: os totais exibidos nos exports são a
+    // soma dos dois aquestos (os passivos já foram deduzidos dentro de cada aquesto).
+    acervoBruto = arredonda2(aquestos.a + aquestos.b)
+    acervoLiquidoBens = acervoBruto
+    passivosDedutiveis = 0
   } else {
-    acervoBruto = arredonda2(linhasBens
-      .filter((l) => l.classificacao === 'comunicavel')
-      .reduce((s, l) => s + l.valorMercado, 0))
+    const comunicaveis = linhasBens.filter((l) => l.classificacao === 'comunicavel')
+    acervoBruto = arredonda2(comunicaveis.reduce((s, l) => s + l.valorMercado, 0))
+    acervoLiquidoBens = arredonda2(comunicaveis.reduce((s, l) => s + l.valorLiquido, 0))
     passivosDedutiveis = arredonda2(passivos
       .filter((p) => passivoDedutivelComum(p, regimeBens, linhasBens))
       .reduce((s, p) => s + p.valor, 0))
@@ -272,7 +282,7 @@ export function apurarAcervo({ bens, passivos, regimeBens, marcos }) {
     linhasBens,
     totaisAcervo: {
       acervoBruto, passivosDedutiveis,
-      acervoLiquido: arredonda2(acervoBruto - passivosDedutiveis),
+      acervoLiquido: arredonda2(acervoLiquidoBens - passivosDedutiveis),
     },
     aquestos, linhaTempo, alertas,
   }
