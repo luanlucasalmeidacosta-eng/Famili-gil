@@ -28,7 +28,10 @@ describe('pensaoParaXlsx', () => {
 
 const memoriaPartilha = {
   versao: 1,
-  entradas_snapshot: { config: { regime_bens: 'comunhao_parcial', data_casamento: '2015-01-01', data_separacao_fato: null, data_ajuizamento: null } },
+  entradas_snapshot: {
+    config: { regime_bens: 'comunhao_parcial', data_casamento: '2015-01-01', data_separacao_fato: '2022-06-01', separacao_fato_efeito: 'corta_comunicacao', data_ajuizamento: null },
+    cenario: { rotulo: 'Proposta 50/50', pct_parte_a: 50, alocacoes: [{ bemId: 'b1', para: 'parte_a' }], tornas: [{ de: 'parte_a', para: 'parte_b', valor: 200000, forma: 'dinheiro' }] },
+  },
   linhas_bens: [{
     bemId: 'b1', descricao: 'Casa', tipo: 'imovel', valorMercado: 400000, valorLiquido: 400000,
     classificacao: 'comunicavel', regra: 'CC, art. 1.660, I', citacao: 'CC, art. 1.660, I', origem: 'automatica',
@@ -51,5 +54,40 @@ describe('partilhaParaXlsx', () => {
     const wb = new ExcelJS.Workbook()
     await wb.xlsx.load(bytes)
     expect(wb.worksheets.map((w) => w.name)).toEqual(['Bens', 'Quinhões', 'Cenário', 'Tributário'])
+  })
+
+  const textoDaAba = async (memoria, nome) => {
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load(await partilhaParaXlsx(memoria, casoPartilha))
+    const textos = []
+    wb.getWorksheet(nome).eachRow((r) => r.eachCell((c) => textos.push(String(c.value))))
+    return textos.join(' | ')
+  }
+
+  it('aba Cenário traz os parâmetros, as alocações e as tornas — não só os totais', async () => {
+    const texto = await textoDaAba(memoriaPartilha, 'Cenário')
+    expect(texto).toContain('Proposta 50/50')
+    expect(texto).toContain('Percentual da parte A (%)')
+    expect(texto).toContain('Alocações informadas')
+    expect(texto).toContain('Casa') // descrição do bem alocado, não o uuid
+    expect(texto).toContain('Tornas informadas')
+    expect(texto).toContain('dinheiro')
+    expect(texto).toContain('Efeito da separação de fato')
+    expect(texto).toContain('400000') // acervo bruto continua presente
+  })
+
+  it('aba Bens traz a coluna Origem', async () => {
+    const texto = await textoDaAba(memoriaPartilha, 'Bens')
+    expect(texto).toContain('Origem')
+    expect(texto).toContain('automatica')
+  })
+
+  it('participação final: totais do cenário não saem zerados', async () => {
+    const participacao = {
+      ...memoriaPartilha,
+      totais: { acervoBruto: 450000, passivosDedutiveis: 0, acervoLiquido: 450000, somaTornas: 0 },
+    }
+    const texto = await textoDaAba(participacao, 'Cenário')
+    expect(texto).toContain('450000')
   })
 })

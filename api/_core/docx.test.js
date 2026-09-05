@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest'
+import JSZip from 'jszip'
 import { pensaoParaDocx, partilhaParaDocx } from './docx.js'
+
+// O .docx é um zip; pra conferir o TEXTO que o advogado vai ler no Word (e não só
+// que o pacote existe) descompactamos o word/document.xml e removemos as tags.
+async function textoDoDocx(bytes) {
+  const zip = await JSZip.loadAsync(bytes)
+  const xml = await zip.file('word/document.xml').async('string')
+  return xml.replace(/<[^>]+>/g, '')
+}
 
 const memoria = {
   versao: 2, data_base: '2024-10-01',
@@ -43,7 +52,10 @@ describe('pensaoParaDocx', () => {
 
 const memoriaPartilha = {
   versao: 1,
-  entradas_snapshot: { config: { regime_bens: 'comunhao_parcial', data_casamento: '2015-01-01', data_separacao_fato: null, data_ajuizamento: null } },
+  entradas_snapshot: {
+    config: { regime_bens: 'comunhao_parcial', data_casamento: '2015-01-01', data_separacao_fato: '2022-06-01', separacao_fato_efeito: 'corta_comunicacao', data_ajuizamento: null },
+    cenario: { rotulo: 'Proposta 50/50', pct_parte_a: 50, alocacoes: [{ bemId: 'b1', para: 'parte_a' }], tornas: [{ de: 'parte_a', para: 'parte_b', valor: 200000, forma: 'dinheiro' }] },
+  },
   linhas_bens: [{
     bemId: 'b1', descricao: 'Casa', tipo: 'imovel', valorMercado: 400000, valorLiquido: 400000,
     classificacao: 'comunicavel', regra: 'CC, art. 1.660, I', citacao: 'CC, art. 1.660, I', origem: 'automatica',
@@ -66,5 +78,34 @@ describe('partilhaParaDocx', () => {
     expect(bytes.length).toBeGreaterThan(1000)
     expect(bytes[0]).toBe(0x50)
     expect(bytes[1]).toBe(0x4b)
+  })
+
+  it('não repete o prefixo "R$" na linha do enquadramento tributário', async () => {
+    const texto = await textoDoDocx(await partilhaParaDocx(memoriaPartilha, casoPartilha))
+    expect(texto).toContain('ITBI sobre R$ 200000,00')
+    expect(texto).not.toContain('R$ R$')
+  })
+
+  it('cabeçalho traz rótulo do cenário, data/hora de geração e efeito da separação de fato', async () => {
+    const texto = await textoDoDocx(await partilhaParaDocx(memoriaPartilha, casoPartilha))
+    expect(texto).toContain('Proposta 50/50')
+    expect(texto).toContain('Gerado em:')
+    expect(texto).toContain('Efeito da separação de fato:')
+    expect(texto).toContain('corta a comunicação')
+  })
+
+  it('tabela de bens traz a coluna Origem (automática/override)', async () => {
+    const texto = await textoDoDocx(await partilhaParaDocx(memoriaPartilha, casoPartilha))
+    expect(texto).toContain('Origem')
+    expect(texto).toContain('automática')
+  })
+
+  it('linha do tempo imprime os alertas do intervalo', async () => {
+    const comAlerta = {
+      ...memoriaPartilha,
+      linha_tempo: [{ intervalo: 'constancia', de: '2015-01-01', ate: null, regraComunicacao: 'regra', bensNoIntervalo: ['b1'], alertas: ['Bem "Casa" saiu particular — confira.'] }],
+    }
+    const texto = await textoDoDocx(await partilhaParaDocx(comAlerta, casoPartilha))
+    expect(texto).toContain('saiu particular')
   })
 })

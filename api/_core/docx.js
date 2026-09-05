@@ -68,28 +68,39 @@ const ROTULOS_REGIME = {
   participacao_final_aquestos: 'Participação final nos aquestos',
 }
 
+const ROTULOS_ORIGEM = { automatica: 'automática', override: 'override (advogado)', pendente: 'pendente' }
+const ROTULOS_EFEITO_SEPARACAO = {
+  corta_comunicacao: 'corta a comunicação dos bens a partir da separação de fato',
+  apenas_alerta: 'não corta a comunicação — apenas sinaliza os bens adquiridos depois',
+}
+
 /** @returns {Promise<Uint8Array>} */
 export async function partilhaParaDocx(memoria, caso) {
   const config = memoria.entradas_snapshot?.config || {}
+  const cenario = memoria.entradas_snapshot?.cenario || {}
   const linhas = memoria.linhas_bens || []
   const fundamentosBens = [...new Set(linhas.map((l) => l.citacao).filter(Boolean))]
 
   const header = [
     new Paragraph({ text: 'Memória de Partilha de Bens', heading: HeadingLevel.HEADING_1 }),
     new Paragraph(`Parte A: ${caso.parte_a || '—'}   Parte B: ${caso.parte_b || '—'}`),
-    new Paragraph(`Processo: ${caso.numero_processo || '—'}   Versão: ${memoria.versao}`),
+    new Paragraph(`Processo: ${caso.numero_processo || '—'}   Versão: ${memoria.versao}   Gerado em: ${new Date().toLocaleString('pt-BR')}`),
+    new Paragraph(`Cenário: ${cenario.rotulo || '—'}${cenario.pct_parte_a != null ? `   Divisão: ${cenario.pct_parte_a}% / ${100 - Number(cenario.pct_parte_a)}%` : ''}`),
     new Paragraph(`Regime de bens: ${ROTULOS_REGIME[config.regime_bens] || config.regime_bens || '—'}`),
     new Paragraph(`Casamento: ${config.data_casamento || '—'}   Separação de fato: ${config.data_separacao_fato || '—'}   Ajuizamento: ${config.data_ajuizamento || '—'}`),
+    ...(config.data_separacao_fato
+      ? [new Paragraph(`Efeito da separação de fato: ${ROTULOS_EFEITO_SEPARACAO[config.separacao_fato_efeito] || config.separacao_fato_efeito || '—'}`)]
+      : []),
     new Paragraph(''),
   ]
 
   const tabelaBens = new Table({
     rows: [
-      new TableRow({ children: ['Descrição', 'Tipo', 'Valor', 'Líquido', 'Classificação', 'Fundamento', 'Alocado para'].map(cel) }),
+      new TableRow({ children: ['Descrição', 'Tipo', 'Valor', 'Líquido', 'Classificação', 'Origem', 'Fundamento', 'Alocado para'].map(cel) }),
       ...linhas.map((l) => new TableRow({
         children: [
           l.descricao, l.tipo, brl(l.valorMercado), brl(l.valorLiquido),
-          l.classificacao, l.citacao || '—', l.alocadoPara || '—',
+          l.classificacao, ROTULOS_ORIGEM[l.origem] || l.origem || '—', l.citacao || '—', l.alocadoPara || '—',
         ].map(cel),
       })),
     ],
@@ -107,14 +118,18 @@ export async function partilhaParaDocx(memoria, caso) {
   const tributario = (memoria.alertas_tributarios || []).length
     ? [
         new Paragraph({ text: 'Enquadramento tributário', heading: HeadingLevel.HEADING_2 }),
-        ...memoria.alertas_tributarios.map((t) => new Paragraph(`• ${t.tipo} sobre R$ ${brl(t.base)} — ${t.fundamento}`)),
+        // brl() já prefixa "R$ " — não repetir o prefixo aqui.
+        ...memoria.alertas_tributarios.map((t) => new Paragraph(`• ${t.tipo} sobre ${brl(t.base)} — ${t.fundamento}`)),
         new Paragraph({ children: [new TextRun({ text: 'O valor do imposto NÃO é calculado aqui — alíquota é municipal/estadual e varia.', italics: true })] }),
       ]
     : []
 
   const linhaTempo = [
     new Paragraph({ text: 'Linha do tempo', heading: HeadingLevel.HEADING_2 }),
-    ...(memoria.linha_tempo || []).map((t) => new Paragraph(`• ${t.intervalo}: ${t.regraComunicacao}`)),
+    ...(memoria.linha_tempo || []).flatMap((t) => [
+      new Paragraph(`• ${t.intervalo}: ${t.regraComunicacao}`),
+      ...(t.alertas || []).map((a) => new Paragraph(`    ⚠ ${a}`)),
+    ]),
   ]
 
   const fundPartilha = [
