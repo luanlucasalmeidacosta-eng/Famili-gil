@@ -5,7 +5,7 @@ import AbaDocumentos from './AbaDocumentos.jsx'
 
 const uploadFn = vi.fn(async () => ({ error: null }))
 const insertFn = vi.fn(async () => ({ error: null }))
-vi.mock('../../lib/supabase.js', () => ({
+vi.mock('../lib/supabase.js', () => ({
   supabase: {
     from: () => ({
       select: () => ({ eq: () => ({ order: async () => ({ data: [], error: null }) }) }),

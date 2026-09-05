@@ -2,7 +2,7 @@ import { useState } from 'react'
 import AbaParametros from '../features/pensao/AbaParametros.jsx'
 import AbaParcelas from '../features/pensao/AbaParcelas.jsx'
 import AbaPagamentos from '../features/pensao/AbaPagamentos.jsx'
-import AbaDocumentos from '../features/pensao/AbaDocumentos.jsx'
+import AbaDocumentos from '../features/AbaDocumentos.jsx'
 import AbaMemoria from '../features/pensao/AbaMemoria.jsx'
 
 const ABAS = [

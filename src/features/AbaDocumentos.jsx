@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { supabase } from '../../lib/supabase.js'
+import { supabase } from '../lib/supabase.js'
 
 const TIPOS = ['sentenca', 'acordo', 'comprovante', 'extrato', 'matricula', 'outro']
 
