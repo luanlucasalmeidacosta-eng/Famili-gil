@@ -8,8 +8,6 @@
 //
 // Isolamento: este arquivo NUNCA importa de api/pensao/*.
 
-import { arredonda2 } from '../_core/dinheiro.js'
-
 const SENTINELA_SEM_FIM = '9999-12-31' // "constância" sem marco de fim informado
 
 function fimConstancia(marcos) {
