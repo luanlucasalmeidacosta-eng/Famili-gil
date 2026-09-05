@@ -36,4 +36,16 @@ describe('AbaMemoria (partilha)', () => {
     expect(screen.getByText('Constância do casamento/união')).toBeInTheDocument()
     expect(screen.getByText(/Verificar data de aquisição do bem b1/)).toBeInTheDocument()
   })
+
+  it('mostra quinhão ideal (% e R$) e valor alocado por parte', async () => {
+    apiFetch.mockResolvedValueOnce(memoria)
+    const { default: AbaMemoria } = await import('./AbaMemoria.jsx')
+    render(<AbaMemoria caso={{ id: 'c1' }} />)
+    await waitFor(() => expect(screen.getByText('Quinhão ideal')).toBeInTheDocument())
+    expect(screen.getByText('Valor alocado')).toBeInTheDocument()
+    // as duas partes têm quinhão ideal de 50% — R$ 200.000,00
+    expect(screen.getAllByText('50% — R$ 200000,00')).toHaveLength(2)
+    expect(screen.getAllByText('R$ 400000,00').length).toBeGreaterThan(0) // valor alocado da parte A
+    expect(screen.getByText('R$ 0,00')).toBeInTheDocument() // valor alocado da parte B
+  })
 })

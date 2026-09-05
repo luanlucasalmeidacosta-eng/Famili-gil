@@ -11,6 +11,7 @@ export default function AbaCenarios({ caso }) {
   const [pctParteA, setPctParteA] = useState(50)
   const [alocacoes, setAlocacoes] = useState({}) // bemId -> { para, fracaoA }
   const [tornas, setTornas] = useState([])
+  const [versoesPorCenario, setVersoesPorCenario] = useState({}) // cenarioId -> [versao, ...] desc
   const [msg, setMsg] = useState('')
 
   const carregar = useCallback(async () => {
@@ -20,6 +21,10 @@ export default function AbaCenarios({ caso }) {
     setConfig(c || null)
     const { data: cs } = await supabase.from('partilha_cenarios').select('*').eq('caso_id', caso.id).order('criado_em', { ascending: false })
     setCenarios(cs || [])
+    const { data: mem } = await supabase.from('partilha_memoria').select('versao, cenario_id').eq('caso_id', caso.id).order('versao', { ascending: false })
+    const porCenario = {}
+    for (const m of mem || []) (porCenario[m.cenario_id] ||= []).push(m.versao)
+    setVersoesPorCenario(porCenario)
   }, [caso.id])
   useEffect(() => { carregar() }, [carregar])
 
@@ -125,7 +130,14 @@ export default function AbaCenarios({ caso }) {
       <ul className="divide-y rounded border">
         {cenarios.map((c) => (
           <li key={c.id} className="flex items-center justify-between p-2">
-            <span>{c.rotulo} ({c.pct_parte_a}% / {100 - c.pct_parte_a}%)</span>
+            <span>
+              {c.rotulo} ({c.pct_parte_a}% / {100 - c.pct_parte_a}%)
+              <span className="ml-2 text-xs text-neutral-500">
+                {versoesPorCenario[c.id]?.length
+                  ? `versões calculadas: ${versoesPorCenario[c.id].slice().sort((a, b) => a - b).map((v) => `v${v}`).join(', ')} — abra na aba Memória de partilha`
+                  : 'ainda não calculado'}
+              </span>
+            </span>
             <button onClick={() => calcular(c.id)} className="rounded border px-2 py-1 text-xs">Calcular</button>
           </li>
         ))}

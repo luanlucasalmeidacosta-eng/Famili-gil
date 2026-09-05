@@ -11,6 +11,33 @@ const ROTULOS_INTERVALO = {
 }
 
 const fmtData = (d) => (d ? d : '—')
+const pct = (p) => (p == null ? '—' : `${p}%`)
+const valor = (v) => (v == null ? '—' : brl(v))
+
+function QuadroQuinhoes({ titulo, quadro }) {
+  return (
+    <div className="rounded border p-3">
+      <h3 className="font-medium">{titulo}</h3>
+      <table className="mt-2 w-full text-left">
+        <thead><tr className="text-xs text-neutral-500">
+          <th className="py-1">Parte</th><th className="py-1">Acervo/aquestos</th>
+          <th className="py-1">Quinhão ideal</th><th className="py-1">Valor alocado</th><th className="py-1">Torna</th>
+        </tr></thead>
+        <tbody>
+          {[['Parte A', quadro.parteA], ['Parte B', quadro.parteB]].map(([nome, p]) => (
+            <tr key={nome} className="border-t">
+              <td className="py-1">{nome}</td>
+              <td className="py-1">{brl(p.acervoLiquido)}</td>
+              <td className="py-1">{pct(p.quinhaoIdealPct)} — {valor(p.quinhaoIdealValor)}</td>
+              <td className="py-1">{valor(p.valorAlocado)}</td>
+              <td className="py-1">{brl(p.torna)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
 
 export default function AbaMemoria({ caso }) {
   const [memoria, setMemoria] = useState(null)
@@ -112,17 +139,9 @@ export default function AbaMemoria({ caso }) {
           </table>
 
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="rounded border p-3">
-              <h3 className="font-medium">Quinhões e tornas — v{memoria.versao}</h3>
-              <p>Parte A: acervo {brl(memoria.quadro_quinhoes.parteA.acervoLiquido)} — torna {brl(memoria.quadro_quinhoes.parteA.torna)}</p>
-              <p>Parte B: acervo {brl(memoria.quadro_quinhoes.parteB.acervoLiquido)} — torna {brl(memoria.quadro_quinhoes.parteB.torna)}</p>
-            </div>
+            <QuadroQuinhoes titulo={`Quinhões e tornas — v${memoria.versao}`} quadro={memoria.quadro_quinhoes} />
             {comparada && (
-              <div className="rounded border p-3">
-                <h3 className="font-medium">Quinhões e tornas — v{comparada.versao}</h3>
-                <p>Parte A: acervo {brl(comparada.quadro_quinhoes.parteA.acervoLiquido)} — torna {brl(comparada.quadro_quinhoes.parteA.torna)}</p>
-                <p>Parte B: acervo {brl(comparada.quadro_quinhoes.parteB.acervoLiquido)} — torna {brl(comparada.quadro_quinhoes.parteB.torna)}</p>
-              </div>
+              <QuadroQuinhoes titulo={`Quinhões e tornas — v${comparada.versao}`} quadro={comparada.quadro_quinhoes} />
             )}
           </div>
 
