@@ -22,7 +22,7 @@ vi.mock('../../lib/supabase.js', () => ({
 describe('AbaBens', () => {
   it('mostra a classificação prevista do bem já cadastrado', async () => {
     render(<AbaBens caso={{ id: 'c1' }} />)
-    await waitFor(() => expect(screen.getByText(/comunicável/i)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('cell', { name: /comunicável/i })).toBeInTheDocument())
     expect(screen.getByText(/CC, art\. 1\.660, I/)).toBeInTheDocument()
   })
 

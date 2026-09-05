@@ -132,8 +132,8 @@ export default function AbaBens({ caso }) {
                 <td className="p-2">
                   <select defaultValue={bem.classificacao_override || ''} onChange={(e) => reclassificar(bem.id, e.target.value)} className="rounded border px-1 text-xs">
                     <option value="">— automática —</option>
-                    <option value="comunicavel">Forçar bem comum</option>
-                    <option value="particular">Forçar bem exclusivo</option>
+                    <option value="comunicavel">Forçar comunicável</option>
+                    <option value="particular">Forçar particular</option>
                   </select>
                 </td>
                 <td className="p-2"><button onClick={() => remover(bem.id)} className="text-xs text-red-600">Remover</button></td>
