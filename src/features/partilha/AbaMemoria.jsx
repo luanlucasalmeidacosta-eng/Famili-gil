@@ -4,6 +4,14 @@ import { supabase } from '../../lib/supabase.js'
 
 const brl = (n) => `R$ ${Number(n).toFixed(2).replace('.', ',')}`
 
+const ROTULOS_INTERVALO = {
+  antes_casamento: 'Antes do casamento',
+  constancia: 'Constância do casamento/união',
+  apos_fim_constancia: 'Após o fim da constância',
+}
+
+const fmtData = (d) => (d ? d : '—')
+
 export default function AbaMemoria({ caso }) {
   const [memoria, setMemoria] = useState(null)
   const [comparada, setComparada] = useState(null)
@@ -117,6 +125,25 @@ export default function AbaMemoria({ caso }) {
               </div>
             )}
           </div>
+
+          {memoria.linha_tempo?.length > 0 && (
+            <div className="mt-4 rounded border p-3">
+              <h3 className="font-medium">Linha do tempo</h3>
+              <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {memoria.linha_tempo.map((item) => (
+                  <div key={item.intervalo} className="rounded border p-2">
+                    <p className="font-medium">{ROTULOS_INTERVALO[item.intervalo] || item.intervalo}</p>
+                    <p className="text-xs text-neutral-600">{fmtData(item.de)} – {fmtData(item.ate)}</p>
+                    {item.alertas?.length > 0 && (
+                      <ul className="mt-1 text-xs text-amber-700">
+                        {item.alertas.map((a, i) => <li key={i}>• {a}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {memoria.alertas_tributarios?.length > 0 && (
             <div className="mt-4 rounded border p-3">
