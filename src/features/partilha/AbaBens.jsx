@@ -37,9 +37,12 @@ export default function AbaBens({ caso }) {
         classificacaoOverride: bem.classificacao_override,
       },
       regimeBens: config.regime_bens,
+      // dataAjuizamento é obrigatória aqui: sem ela o fim da constância cai no
+      // sentinela 9999-12-31 e o preview do cliente diverge do veredito do servidor
+      // (api/partilha/calcular.js sempre a envia) pro MESMO bem.
       marcos: {
         dataCasamento: config.data_casamento, dataSeparacaoFato: config.data_separacao_fato,
-        separacaoFatoEfeito: config.separacao_fato_efeito,
+        separacaoFatoEfeito: config.separacao_fato_efeito, dataAjuizamento: config.data_ajuizamento || null,
       },
     })
   }

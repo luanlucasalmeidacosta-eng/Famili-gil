@@ -28,7 +28,8 @@ export default function AbaCenarios({ caso }) {
     const c = classificarBem({
       bem: { formaAquisicao: bem.forma_aquisicao, dataAquisicao: bem.data_aquisicao, clausulaIncomunicabilidade: bem.clausula_incomunicabilidade, titular: bem.titular, classificacaoOverride: bem.classificacao_override },
       regimeBens: config.regime_bens,
-      marcos: { dataCasamento: config.data_casamento, dataSeparacaoFato: config.data_separacao_fato, separacaoFatoEfeito: config.separacao_fato_efeito },
+      // dataAjuizamento incluída pelos mesmos motivos de AbaBens: paridade com o servidor.
+      marcos: { dataCasamento: config.data_casamento, dataSeparacaoFato: config.data_separacao_fato, separacaoFatoEfeito: config.separacao_fato_efeito, dataAjuizamento: config.data_ajuizamento || null },
     })
     return c.classificacao === 'comunicavel' || c.classificacao.startsWith('aquesto')
   }

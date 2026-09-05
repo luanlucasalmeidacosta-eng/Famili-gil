@@ -84,6 +84,27 @@ describe('classificarBem — comunhão parcial', () => {
     expect(r).toMatchObject({ classificacao: 'pendente', campoFaltante: 'dataAquisicao' })
   })
 
+  it('oneroso COM dataAquisicao fora da constância → particular, não pendente', () => {
+    const r = classificarBem({
+      bem: { formaAquisicao: 'oneroso', dataAquisicao: '2023-05-01', titular: 'parte_a' },
+      regimeBens,
+      marcos: { dataCasamento: '2015-01-01', dataSeparacaoFato: null, dataAjuizamento: '2022-01-01', separacaoFatoEfeito: 'corta_comunicacao' },
+    })
+    expect(r.classificacao).toBe('particular')
+    expect(r.campoFaltante).toBeUndefined()
+    expect(r.regra).toContain('fora da constância')
+  })
+
+  it('fato_eventual COM dataAquisicao fora da constância → particular, não pendente', () => {
+    const r = classificarBem({
+      bem: { formaAquisicao: 'fato_eventual', dataAquisicao: '2023-05-01', titular: 'parte_a' },
+      regimeBens,
+      marcos: { dataCasamento: '2015-01-01', dataSeparacaoFato: null, dataAjuizamento: '2022-01-01', separacaoFatoEfeito: 'corta_comunicacao' },
+    })
+    expect(r.classificacao).toBe('particular')
+    expect(r.campoFaltante).toBeUndefined()
+  })
+
   it('classificacaoOverride sempre vence, sem consultar regra', () => {
     const r = classificarBem({
       bem: { formaAquisicao: 'oneroso', dataAquisicao: '2010-01-01', titular: 'parte_a', classificacaoOverride: 'comunicavel' },
@@ -207,6 +228,17 @@ describe('classificarBem — participação final nos aquestos', () => {
       regimeBens, marcos: marcosPadrao,
     })
     expect(r).toMatchObject({ classificacao: 'pendente', campoFaltante: 'dataAquisicao' })
+  })
+
+  it('oneroso COM data fora da constância → fora_aquestos, não pendente', () => {
+    const r = classificarBem({
+      bem: { formaAquisicao: 'oneroso', dataAquisicao: '2023-05-01', titular: 'parte_a' },
+      regimeBens,
+      marcos: { dataCasamento: '2015-01-01', dataSeparacaoFato: null, dataAjuizamento: '2022-01-01', separacaoFatoEfeito: 'corta_comunicacao' },
+    })
+    expect(r.classificacao).toBe('fora_aquestos')
+    expect(r.campoFaltante).toBeUndefined()
+    expect(r.regra).toContain('fora da constância')
   })
 })
 

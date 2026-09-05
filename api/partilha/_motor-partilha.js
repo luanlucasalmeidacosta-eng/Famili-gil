@@ -48,6 +48,13 @@ function classificarComunhaoParcial(bem, marcos) {
     return { classificacao: 'comunicavel', regra: 'CC, art. 1.660, I' }
   }
   if (formaAquisicao === 'oneroso' || formaAquisicao === 'fato_eventual') {
+    // A data EXISTE mas caiu fora da janela da constância (só pode ser depois do
+    // fim dela — o "antes do casamento" já foi tratado lá em cima). Isso não é
+    // dado faltando: é exclusão pela regra. Dizer "falta informar dataAquisicao"
+    // num documento protocolado seria afirmar algo falso.
+    if (dataAquisicao) {
+      return { classificacao: 'particular', regra: 'CC, art. 1.658 — adquirido fora da constância do casamento/união' }
+    }
     return { classificacao: 'pendente', campoFaltante: 'dataAquisicao' }
   }
   return { classificacao: 'pendente', campoFaltante: 'formaAquisicao' }
@@ -98,6 +105,11 @@ function classificarParticipacaoFinal(bem, marcos) {
     }
   }
   if (formaAquisicao === 'oneroso') {
+    // mesma distinção de classificarComunhaoParcial: data presente porém fora da
+    // constância é exclusão pela regra, não campo faltante.
+    if (dataAquisicao) {
+      return { classificacao: 'fora_aquestos', regra: 'CC, art. 1.672 — adquirido fora da constância do casamento/união' }
+    }
     return { classificacao: 'pendente', campoFaltante: 'dataAquisicao' }
   }
   return { classificacao: 'pendente', campoFaltante: 'formaAquisicao' }
