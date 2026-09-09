@@ -36,6 +36,7 @@ export async function processarCalculo({ supabase, casoId, cenarioId }) {
   }))
   const cenarioMapeado = {
     pctParteA: Number(cenario.pct_parte_a), alocacoes: cenario.alocacoes || [], tornas: cenario.tornas || [],
+    tributarioInput: cenario.tributario_input || null,
   }
 
   const memoria = calcularPartilha({
@@ -48,7 +49,7 @@ export async function processarCalculo({ supabase, casoId, cenarioId }) {
 
   const { data: inserida, error: errIns } = await supabase.from('partilha_memoria').insert({
     caso_id: casoId, cenario_id: cenarioId, versao,
-    entradas_snapshot: { config, bens, passivos, cenario },
+    entradas_snapshot: { config, bens, passivos, cenario, tributario_input: cenario.tributario_input || null },
     linhas_bens: memoria.linhasBens, quadro_quinhoes: memoria.quadroQuinhoes,
     linha_tempo: memoria.linhaTempo, alertas_tributarios: memoria.alertasTributarios,
     totais: memoria.totais, alertas: memoria.alertas,

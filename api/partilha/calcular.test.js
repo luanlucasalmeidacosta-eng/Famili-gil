@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { processarCalculo } from './calcular.js'
 
-function fakeSb(tabelas) {
+function fakeSb(tabelas, opts = {}) {
   return {
     from(t) {
       const cfg = tabelas[t] || { data: null, error: null }
@@ -9,7 +9,10 @@ function fakeSb(tabelas) {
         select() { return b }, eq() { return b }, order() { return b }, limit() { return b },
         maybeSingle() { return Promise.resolve(cfg) },
         then(res) { return Promise.resolve(cfg).then(res) },
-        insert() { return { select() { return { single() { return Promise.resolve({ data: { id: 'mem1' }, error: null }) } } } } },
+        insert(dados) {
+          if (opts.onInsert) opts.onInsert(t, dados)
+          return { select() { return { single() { return Promise.resolve({ data: { id: 'mem1' }, error: null }) } } } }
+        },
       }
       return b
     },
@@ -79,5 +82,24 @@ describe('processarCalculo', () => {
     const tabelas = baseTabelas({ partilha_bens: { data: [bensOk[0], bemPendente], error: null } })
     const out = await processarCalculo({ supabase: fakeSb(tabelas), casoId: 'caso1', cenarioId: 'c1' })
     expect(out).toEqual({ memoriaId: 'mem1', versao: 1 })
+  })
+
+  it('repassa tributario_input do cenário para o cálculo e para o snapshot', async () => {
+    const tributarioInput = { itbi: { aliquota: 2, norma: 'Lei Municipal nº 1/2020' } }
+    const inserts = []
+    const bemComValor500 = { ...bensOk[0], valor_mercado: 500000 }
+    const cenarioComTributario = { ...cenarioOk, tributario_input: tributarioInput, tornas: [{ forma: 'dinheiro', valor: 250000 }] }
+    const tabelas = baseTabelas({
+      partilha_bens: { data: [bemComValor500], error: null },
+      partilha_cenarios: { data: cenarioComTributario, error: null },
+    })
+    const supa = fakeSb(tabelas, { onInsert: (tabela, linha) => inserts.push([tabela, linha]) })
+
+    await processarCalculo({ supabase: supa, casoId: 'caso1', cenarioId: 'c1' })
+
+    const [, linhaMem] = inserts.find(([t]) => t === 'partilha_memoria')
+    expect(linhaMem.entradas_snapshot.tributario_input).toEqual(tributarioInput)
+    const itbi = (linhaMem.alertas_tributarios || []).find((x) => x.tipo === 'ITBI')
+    expect(itbi.valorImposto).toBe(5000) // base 250000 * 2%
   })
 })
