@@ -48,6 +48,21 @@ describe('pensaoParaDocx', () => {
     expect(bytesSem[0]).toBe(0x50)
     expect(bytesSem[1]).toBe(0x4b)
   })
+
+  it('marca parcelas projetadas, imprime dois totais e a observação', async () => {
+    const mem = {
+      ...memoria,
+      linhas: [{ ...memoria.linhas[0], projetado: true, fonteProjecao: 'Focus de 2026-09-05' }],
+      totais: { ...memoria.totais, saldoAteUltimoIndiceFirme: 1005, saldoComProjecao: 1015 },
+      parametros_snapshot: { projecao: { ligada: true, nota: 'Nota de teste sobre projeção.' } },
+    }
+    const xml = await textoDoDocx(await pensaoParaDocx(mem, caso))
+    expect(xml).toMatch(/projet/i)
+    expect(xml).toContain('último índice firme')
+    expect(xml).toContain('com projeção')
+    expect(xml).toContain('Observação — correção projetada')
+    expect(xml).toContain('Nota de teste sobre projeção.')
+  })
 })
 
 const memoriaPartilha = {

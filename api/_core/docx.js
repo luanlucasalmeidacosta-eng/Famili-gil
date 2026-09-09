@@ -27,21 +27,36 @@ export async function pensaoParaDocx(memoria, caso) {
     new Paragraph(''),
   ]
 
+  const temProjecao = linhas.some((l) => l.projetado)
   const tabela = new Table({
     rows: [
-      new TableRow({ children: ['Competência', 'Vencimento', 'Valor original', 'Correção', 'Juros', 'Pagamentos', 'Saldo'].map(cel) }),
+      new TableRow({ children: ['Competência', 'Vencimento', 'Valor original', 'Correção', 'Juros', 'Pagamentos', 'Saldo', 'Obs.'].map(cel) }),
       ...linhas.map((l) => new TableRow({
         children: [
           l.competencia, l.vencimento, brl(l.valorDevidoOriginal), brl(l.correcao.valor),
           brl(l.juros.valor), brl(l.pagamentosAbatidos.reduce((s, p) => s + p.valorPago, 0)), brl(l.saldoAtualizado),
+          l.projetado ? `projetado${l.fonteProjecao ? ` (${l.fonteProjecao})` : ''}` : '',
         ].map(cel),
       })),
       new TableRow({ children: [
         'TOTAIS', '', brl(memoria.totais.somaOriginal), brl(memoria.totais.somaCorrecao),
-        brl(memoria.totais.somaJuros), brl(memoria.totais.somaPagamentos), brl(memoria.totais.saldo),
+        brl(memoria.totais.somaJuros), brl(memoria.totais.somaPagamentos), brl(memoria.totais.saldo), '',
       ].map(cel) }),
     ],
   })
+
+  const doisTotais = memoria.totais?.saldoAteUltimoIndiceFirme != null
+    ? [
+        new Paragraph(`Saldo até o último índice firme: ${brl(memoria.totais.saldoAteUltimoIndiceFirme)}`),
+        new Paragraph(`Saldo com projeção: ${brl(memoria.totais.saldoComProjecao)}`),
+      ]
+    : []
+  const obsProjecao = (memoria.parametros_snapshot?.projecao?.ligada || temProjecao)
+    ? [
+        new Paragraph({ text: 'Observação — correção projetada', heading: HeadingLevel.HEADING_2 }),
+        new Paragraph(memoria.parametros_snapshot?.projecao?.nota || ''),
+      ]
+    : []
 
   const fund = [
     new Paragraph(''),
@@ -56,7 +71,7 @@ export async function pensaoParaDocx(memoria, caso) {
     new Paragraph({ children: [new TextRun({ text: 'Documento editável — confira os valores antes de protocolar.', italics: true })] }),
   ]
 
-  const doc = new Document({ sections: [{ children: [...header, tabela, ...fund, ...alertas, ...rodape] }] })
+  const doc = new Document({ sections: [{ children: [...header, tabela, ...doisTotais, ...obsProjecao, ...fund, ...alertas, ...rodape] }] })
   const buf = await Packer.toBuffer(doc)
   return new Uint8Array(buf)
 }

@@ -13,20 +13,34 @@ export async function pensaoParaXlsx(memoria, caso) {
   ws.addRow([`Exequente: ${caso.parte_a || ''}`, `Executado: ${caso.parte_b || ''}`])
   ws.addRow([`Processo: ${caso.numero_processo || '—'}`, `Data-base: ${memoria.data_base}`, `Versão: ${memoria.versao}`])
   ws.addRow([])
-  const head = ['Competência', 'Vencimento', 'Valor original', 'Fator correção', 'Correção (R$)', 'Juros (R$)', 'Pagamentos abatidos (R$)', 'Saldo atualizado']
+  const head = ['Competência', 'Vencimento', 'Valor original', 'Fator correção', 'Correção (R$)', 'Juros (R$)', 'Pagamentos abatidos (R$)', 'Saldo atualizado', 'Projetado']
   ws.addRow(head)
 
   const first = ws.rowCount + 1
   for (const l of memoria.linhas) {
     const pagos = l.pagamentosAbatidos.reduce((s, p) => s + p.valorPago, 0)
-    ws.addRow([l.competencia, l.vencimento, l.valorDevidoOriginal, l.correcao.fator, l.correcao.valor, l.juros.valor, pagos, l.saldoAtualizado])
+    ws.addRow([
+      l.competencia, l.vencimento, l.valorDevidoOriginal, l.correcao.fator, l.correcao.valor, l.juros.valor, pagos, l.saldoAtualizado,
+      l.projetado ? 'sim' : '',
+    ])
   }
   const last = ws.rowCount
   ws.addRow([
     'TOTAIS', '', { formula: `SUM(C${first}:C${last})` }, '',
     { formula: `SUM(E${first}:E${last})` }, { formula: `SUM(F${first}:F${last})` },
-    { formula: `SUM(G${first}:G${last})` }, { formula: `SUM(H${first}:H${last})` },
+    { formula: `SUM(G${first}:G${last})` }, { formula: `SUM(H${first}:H${last})` }, '',
   ])
+
+  if (memoria.totais?.saldoAteUltimoIndiceFirme != null) {
+    ws.addRow(['Saldo até o último índice firme', memoria.totais.saldoAteUltimoIndiceFirme])
+    ws.addRow(['Saldo com projeção', memoria.totais.saldoComProjecao])
+  }
+  const projLigada = memoria.parametros_snapshot?.projecao?.ligada || memoria.linhas.some((l) => l.projetado)
+  if (projLigada) {
+    ws.addRow([])
+    ws.addRow(['Observação — correção projetada'])
+    ws.addRow([memoria.parametros_snapshot?.projecao?.nota || ''])
+  }
 
   const buf = await wb.xlsx.writeBuffer()
   return new Uint8Array(buf)
