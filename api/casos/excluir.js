@@ -22,12 +22,19 @@ export async function processarExclusao({ supabase, storage, casoId, tituloConfi
   if (caso.arquivado !== true) throw erro('Só é possível excluir um caso já arquivado.', 422)
   if (caso.titulo !== tituloConfirmacao) throw erro('O título digitado não confere com o do caso.', 422)
 
-  // 1) limpar o Storage sob o prefixo do caso
+  // 1) limpar o Storage sob o prefixo do caso — `list()` devolve no máx. 100
+  //    objetos por chamada, então pagina por `offset` até vir uma página curta.
   const pasta = storage.from(BUCKET)
-  const { data: objetos, error: errList } = await pasta.list(casoId)
-  if (errList) throw erro(`Falha ao listar os anexos: ${errList.message}`, 502)
-  if ((objetos || []).length) {
-    const paths = objetos.map((o) => `${casoId}/${o.name}`)
+  const PAGINA = 100
+  const paths = []
+  for (let offset = 0; ; offset += PAGINA) {
+    const { data: pagina, error: errList } = await pasta.list(casoId, { limit: PAGINA, offset })
+    if (errList) throw erro(`Falha ao listar os anexos: ${errList.message}`, 502)
+    const itens = pagina || []
+    for (const o of itens) paths.push(`${casoId}/${o.name}`)
+    if (itens.length < PAGINA) break
+  }
+  if (paths.length) {
     const { error: errRm } = await pasta.remove(paths)
     if (errRm) throw erro(`Falha ao remover os anexos: ${errRm.message}`, 502)
   }

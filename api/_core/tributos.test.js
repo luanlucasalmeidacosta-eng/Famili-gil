@@ -64,4 +64,11 @@ describe('calcularValorItcmd', () => {
   it('lança se as faixas forem inválidas', () => {
     expect(() => calcularValorItcmd(1000, [{ ate: 100, aliquota: 4 }])).toThrow()
   })
+
+  it('arredonda POR FAIXA, não só no total', () => {
+    // Faixa 1: 100,05 * 10%   = 10,005 → 10,01
+    // Faixa 2: 150,00 * 6,67% = 10,005 → 10,01
+    // Soma faixa a faixa = 20,02. Se arredondasse só o total (20,01), quebraria.
+    expect(calcularValorItcmd(250.05, [{ ate: 100.05, aliquota: 10 }, { ate: null, aliquota: 6.67 }])).toBe(20.02)
+  })
 })
