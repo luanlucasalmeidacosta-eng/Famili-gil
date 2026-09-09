@@ -37,4 +37,22 @@ describe('AbaMemoria', () => {
     await userEvent.click(screen.getByRole('button', { name: /calcular/i }))
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/indisponível/))
   })
+
+  it('marca "Incluir projeção" e envia permitirProjecao no cálculo', async () => {
+    apiFetch.mockResolvedValueOnce({ memoriaId: 'm1', versao: 1 }).mockResolvedValueOnce({
+      versao: 1,
+      linhas: [{ parcelaId: 'p1', competencia: '2026-10', vencimento: '2026-10-10', valorDevidoOriginal: 1000, correcao: { valor: 10, criterio: 'IPCA' }, juros: { valor: 5, criterio: 'x' }, pagamentosAbatidos: [], saldoAtualizado: 1015, projetado: true, fonteProjecao: 'Focus de 2026-09-05' }],
+      totais: { somaOriginal: 1000, somaCorrecao: 10, somaJuros: 5, somaPagamentos: 0, saldo: 1015, saldoAteUltimoIndiceFirme: 1005, saldoComProjecao: 1015 },
+      alertas: [],
+    })
+    render(<AbaMemoria caso={{ id: 'c1' }} />)
+    await userEvent.type(screen.getByLabelText(/data-base/i), '2026-11-15')
+    await userEvent.click(screen.getByLabelText(/incluir proje[çc][ãa]o/i))
+    await userEvent.click(screen.getByRole('button', { name: /calcular/i }))
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/api/pensao/calcular', expect.objectContaining({
+      method: 'POST', body: expect.objectContaining({ permitirProjecao: true }),
+    })))
+    await waitFor(() => expect(screen.getByText(/at[ée] o [úu]ltimo [íi]ndice firme/i)).toBeInTheDocument())
+    expect(screen.getByText(/com proje[çc][ãa]o/i)).toBeInTheDocument()
+  })
 })

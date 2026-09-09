@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { apiFetch, apiFetchBlob } from '../../lib/api.js'
 import { supabase } from '../../lib/supabase.js'
 import { Button, Field, Input, Alert, Badge, EmptyState } from '../../components/ui.jsx'
+import { NOTA_PROJECAO_PADRAO } from './notaProjecao.js'
 
 const brl = (n) => `R$ ${Number(n).toFixed(2).replace('.', ',')}`
 
@@ -12,11 +13,31 @@ export default function AbaMemoria({ caso }) {
   const [erro, setErro] = useState('')
   const [carregando, setCarregando] = useState(false)
 
+  const [projecao, setProjecao] = useState(false)
+  const [manuais, setManuais] = useState([])
+  const [nota, setNota] = useState('')
+  const [indiceCaso, setIndiceCaso] = useState(null)
+
   const listarVersoes = useCallback(async () => {
     const { data } = await supabase.from('pensao_memoria').select('versao').eq('caso_id', caso.id).order('versao', { ascending: false })
     setVersoes((data || []).map((r) => r.versao))
   }, [caso.id])
   useEffect(() => { listarVersoes() }, [listarVersoes])
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      try {
+        const { data } = await supabase
+          .from('pensao_parametros').select('indice_correcao, projecao_nota').eq('caso_id', caso.id).maybeSingle()
+        if (vivo && data) {
+          setIndiceCaso(data.indice_correcao || null)
+          if (data.projecao_nota) setNota(data.projecao_nota)
+        }
+      } catch { /* a chamada é opcional; segue com defaults */ }
+    })()
+    return () => { vivo = false }
+  }, [caso.id])
 
   async function carregarVersao(versao) {
     setErro('')
@@ -29,10 +50,23 @@ export default function AbaMemoria({ caso }) {
   async function calcular() {
     setErro(''); setCarregando(true); setMemoria(null)
     try {
-      await apiFetch('/api/pensao/calcular', { method: 'POST', body: { casoId: caso.id, dataBase } })
+      const body = { casoId: caso.id, dataBase }
+      if (projecao) {
+        body.permitirProjecao = true
+        body.projecoesManuais = manuais
+          .filter((m) => m.competencia && m.taxa !== '')
+          .map((m) => ({ competencia: `${m.competencia}-01`, taxa: Number(m.taxa), fonte: m.fonte || '' }))
+      }
+      await apiFetch('/api/pensao/calcular', { method: 'POST', body })
       await listarVersoes()
       await carregarVersao()
     } catch (e) { setErro(e.message) } finally { setCarregando(false) }
+  }
+
+  async function salvarNota(valor) {
+    try {
+      await supabase.from('pensao_parametros').update({ projecao_nota: valor }).eq('caso_id', caso.id)
+    } catch { /* best-effort */ }
   }
 
   async function exportar(formato) {
@@ -51,6 +85,8 @@ export default function AbaMemoria({ caso }) {
 
   const fundamentos = memoria ? [...new Set(memoria.linhas.flatMap((l) => l.fundamentos || []))] : []
   const versaoMaisRecente = versoes[0]
+  const mostrarManual = projecao && indiceCaso && indiceCaso !== 'IPCA' && indiceCaso !== 'legal'
+  const temDoisTotais = memoria && memoria.totais?.saldoAteUltimoIndiceFirme != null
 
   return (
     <div className="text-sm">
@@ -58,6 +94,10 @@ export default function AbaMemoria({ caso }) {
         <Field label="Data-base">
           <Input type="date" value={dataBase} onChange={(e) => setDataBase(e.target.value)} />
         </Field>
+        <label className="mb-1 flex items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" checked={projecao} onChange={(e) => setProjecao(e.target.checked)} />
+          <span>Incluir projeção (Boletim Focus)</span>
+        </label>
         <Button onClick={calcular} disabled={!dataBase || carregando}>
           {carregando ? 'Calculando…' : 'Calcular nova versão'}
         </Button>
@@ -68,6 +108,39 @@ export default function AbaMemoria({ caso }) {
           </span>
         )}
       </div>
+
+      {mostrarManual && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <p className="mb-2 font-medium text-amber-800">
+            Projeção manual de {indiceCaso} (uma linha por mês projetado)
+          </p>
+          {manuais.map((m, i) => (
+            <div key={i} className="mb-2 flex flex-wrap items-center gap-2">
+              <Input
+                type="month" className="w-40" value={m.competencia}
+                onChange={(e) => setManuais(manuais.map((x, j) => (j === i ? { ...x, competencia: e.target.value } : x)))}
+              />
+              <Input
+                type="number" step="0.01" placeholder="taxa %" className="w-28" value={m.taxa}
+                onChange={(e) => setManuais(manuais.map((x, j) => (j === i ? { ...x, taxa: e.target.value } : x)))}
+              />
+              <Input
+                placeholder="fonte" className="w-56" value={m.fonte}
+                onChange={(e) => setManuais(manuais.map((x, j) => (j === i ? { ...x, fonte: e.target.value } : x)))}
+              />
+              <Button variant="ghost" size="sm" onClick={() => setManuais(manuais.filter((_, j) => j !== i))}>
+                remover
+              </Button>
+            </div>
+          ))}
+          <Button
+            variant="secondary" size="sm"
+            onClick={() => setManuais([...manuais, { competencia: '', taxa: '', fonte: '' }])}
+          >
+            + mês
+          </Button>
+        </div>
+      )}
 
       {versoes.length > 0 && (
         <div className="mb-4">
@@ -113,8 +186,13 @@ export default function AbaMemoria({ caso }) {
               </tr></thead>
               <tbody>
                 {memoria.linhas.map((l) => (
-                  <tr key={l.parcelaId} className="border-t border-slate-100">
-                    <td className="p-2">{l.competencia}</td>
+                  <tr key={l.parcelaId} className={`border-t border-slate-100 ${l.projetado ? 'bg-amber-50' : ''}`}>
+                    <td className="p-2">
+                      {l.competencia}
+                      {l.projetado && (
+                        <Badge tone="amber" className="ml-2" title={l.fonteProjecao || ''}>projetado</Badge>
+                      )}
+                    </td>
                     <td className="p-2">{l.vencimento}</td>
                     <td className="p-2">{brl(l.valorDevidoOriginal)}</td>
                     <td className="p-2" title={l.correcao.criterio}>{brl(l.correcao.valor)}</td>
@@ -134,6 +212,30 @@ export default function AbaMemoria({ caso }) {
               </tbody>
             </table>
           </div>
+
+          {temDoisTotais && (
+            <div className="mt-2 grid gap-1 text-sm">
+              <p>Saldo até o último índice firme: <strong>{brl(memoria.totais.saldoAteUltimoIndiceFirme)}</strong></p>
+              <p>Saldo com projeção: <strong>{brl(memoria.totais.saldoComProjecao)}</strong></p>
+            </div>
+          )}
+
+          {projecao && (
+            <div className="mt-4">
+              <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="nota-projecao">
+                Nota sobre a correção projetada (admissibilidade)
+              </label>
+              <textarea
+                id="nota-projecao"
+                rows={6}
+                className="w-full rounded-lg border border-slate-300 p-2 text-sm text-slate-900"
+                value={nota || NOTA_PROJECAO_PADRAO}
+                onChange={(e) => setNota(e.target.value)}
+                onBlur={(e) => salvarNota(e.target.value)}
+              />
+            </div>
+          )}
+
           <div className="mt-4">
             <h3 className="font-medium text-slate-900">Fundamentos</h3>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
