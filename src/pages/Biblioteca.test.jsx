@@ -4,10 +4,15 @@ import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../lib/supabase.js', () => ({
   supabase: { from: () => ({
-    select: () => ({ order: async () => ({ data: [
-      { slug: 'aliquota_itbi', rotulo: 'Alíquotas de ITBI', ordem: 10 },
-      { slug: 'aliquota_itcmd', rotulo: 'Alíquotas de ITCMD', ordem: 20 },
-    ], error: null }) }),
+    select: () => ({
+      // biblioteca_categorias
+      order: async () => ({ data: [
+        { slug: 'aliquota_itbi', rotulo: 'Alíquotas de ITBI', ordem: 10 },
+        { slug: 'aliquota_itcmd', rotulo: 'Alíquotas de ITCMD', ordem: 20 },
+      ], error: null }),
+      // aliquotas_biblioteca (ListaAliquotas)
+      eq: () => ({ order: async () => ({ data: [], error: null }) }),
+    }),
   }) },
 }))
 
