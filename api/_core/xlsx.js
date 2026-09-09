@@ -105,7 +105,7 @@ export async function partilhaParaXlsx(memoria, caso) {
       t.tipo, t.base,
       t.aliquota != null ? `${t.aliquota}%` : (t.aliquotaNorma ? 'faixas' : '—'),
       t.aliquotaNorma || '—',
-      t.valorImposto != null ? (t.valorImpostoManual ?? t.valorImposto) : '—',
+      (t.valorImpostoManual ?? t.valorImposto) ?? '—',
       t.fundamento,
     ])
   }

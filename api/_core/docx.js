@@ -122,7 +122,8 @@ export async function partilhaParaDocx(memoria, caso) {
         // brl() já prefixa "R$ " — não repetir o prefixo aqui.
         ...memoria.alertas_tributarios.map((t) => {
           let linha = `• ${t.tipo} sobre ${brl(t.base)}`
-          if (t.valorImposto != null) {
+          // Manual sozinho (advogado tem a guia do fisco, não a alíquota) também imprime.
+          if ((t.valorImpostoManual ?? t.valorImposto) != null) {
             const val = t.valorImpostoManual ?? t.valorImposto
             linha += ` — imposto ${brl(val)}`
             if (t.valorImpostoManual != null) linha += ' (valor informado pelo advogado)'

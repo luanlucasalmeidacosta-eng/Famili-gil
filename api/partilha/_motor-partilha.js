@@ -435,8 +435,12 @@ export function sinalizarTributario({ quadroQuinhoes, cenario, regimeBens, tribu
       e.aliquota = inp.itbi.aliquota
       e.aliquotaNorma = inp.itbi.norma || '—'
       e.valorImposto = arredonda2(e.base * inp.itbi.aliquota / 100)
-      if (typeof inp.valorItbiManual === 'number') e.valorImpostoManual = arredonda2(inp.valorItbiManual)
-    } else {
+    }
+    // O valor manual vale por si só: o advogado pode ter a guia do fisco sem a
+    // alíquota. Ele sobrevive com ou sem cálculo — e supre o aviso.
+    const manualItbi = typeof inp.valorItbiManual === 'number' && !Number.isNaN(inp.valorItbiManual)
+    if (manualItbi) e.valorImpostoManual = arredonda2(inp.valorItbiManual)
+    if (e.valorImposto === undefined && !manualItbi) {
       avisos.push('Informe a alíquota de ITBI para calcular o valor do imposto.')
     }
     entradas.push(e)
@@ -448,8 +452,10 @@ export function sinalizarTributario({ quadroQuinhoes, cenario, regimeBens, tribu
     if (inp.itcmd && Array.isArray(inp.itcmd.faixas) && validarFaixasItcmd(inp.itcmd.faixas).ok) {
       e.aliquotaNorma = inp.itcmd.norma || '—'
       e.valorImposto = calcularValorItcmd(e.base, inp.itcmd.faixas)
-      if (typeof inp.valorItcmdManual === 'number') e.valorImpostoManual = arredonda2(inp.valorItcmdManual)
-    } else {
+    }
+    const manualItcmd = typeof inp.valorItcmdManual === 'number' && !Number.isNaN(inp.valorItcmdManual)
+    if (manualItcmd) e.valorImpostoManual = arredonda2(inp.valorItcmdManual)
+    if (e.valorImposto === undefined && !manualItcmd) {
       avisos.push('Informe a alíquota de ITCMD para calcular o valor do imposto.')
     }
     entradas.push(e)

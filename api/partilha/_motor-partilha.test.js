@@ -582,6 +582,34 @@ describe('sinalizarTributario — valor do imposto', () => {
     expect(itbi.valorImpostoManual).toBe(3500)
   })
 
+  it('valorItbiManual sozinho (sem alíquota) sobrevive e supre o aviso', () => {
+    const { entradas, avisos } = sinalizarTributario({
+      quadroQuinhoes: quadroComExcesso,
+      cenario: { tornas: [{ forma: 'dinheiro', valor: 200000 }] },
+      regimeBens: 'comunhao_parcial',
+      tributarioInput: { itbi: null, valorItbiManual: 7777.77 },
+    })
+    const itbi = entradas.find((x) => x.tipo === 'ITBI')
+    expect(itbi.base).toBe(200000)
+    expect(itbi.valorImposto).toBeUndefined()
+    expect(itbi.valorImpostoManual).toBe(7777.77)
+    expect(avisos).not.toContain('Informe a alíquota de ITBI para calcular o valor do imposto.')
+  })
+
+  it('valorItcmdManual sozinho (sem faixas) sobrevive e supre o aviso', () => {
+    const { entradas, avisos } = sinalizarTributario({
+      quadroQuinhoes: quadroComExcesso,
+      cenario: { tornas: [{ forma: 'sem_contrapartida', valor: 0 }] },
+      regimeBens: 'comunhao_parcial',
+      tributarioInput: { itcmd: null, valorItcmdManual: 8888.88 },
+    })
+    const itcmd = entradas.find((x) => x.tipo === 'ITCMD')
+    expect(itcmd.base).toBe(200000)
+    expect(itcmd.valorImposto).toBeUndefined()
+    expect(itcmd.valorImpostoManual).toBe(8888.88)
+    expect(avisos).not.toContain('Informe a alíquota de ITCMD para calcular o valor do imposto.')
+  })
+
   it('faixas inválidas no input: alerta, sem valor', () => {
     const { entradas } = sinalizarTributario({
       quadroQuinhoes: quadroComExcesso,

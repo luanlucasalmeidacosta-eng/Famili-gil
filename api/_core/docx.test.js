@@ -119,4 +119,13 @@ describe('partilhaParaDocx', () => {
     expect(texto).toContain('confira a vigência')
     expect(texto).not.toContain('NÃO é calculado')
   })
+
+  it('imprime o valor manual mesmo sem alíquota informada', async () => {
+    const mem = { ...memoriaPartilha, alertas_tributarios: [
+      { tipo: 'ITBI', base: 200000, fundamento: 'Súmula 116', valorImpostoManual: 7777.77 },
+    ] }
+    const texto = await textoDoDocx(await partilhaParaDocx(mem, casoPartilha))
+    expect(texto).toContain('imposto R$ 7777,77')
+    expect(texto).toContain('valor informado pelo advogado')
+  })
 })

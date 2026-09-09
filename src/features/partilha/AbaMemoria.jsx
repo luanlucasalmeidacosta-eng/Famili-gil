@@ -193,7 +193,7 @@ export default function AbaMemoria({ caso }) {
               {memoria.alertas_tributarios.map((t, i) => (
                 <p key={i}>
                   {t.tipo} sobre {brl(t.base)}
-                  {t.valorImposto != null && (
+                  {(t.valorImpostoManual ?? t.valorImposto) != null && (
                     <> — imposto {brl(t.valorImpostoManual ?? t.valorImposto)}
                       {t.valorImpostoManual != null && ' (valor informado pelo advogado)'}
                       {t.aliquota != null && ` · alíquota ${t.aliquota}%`}
