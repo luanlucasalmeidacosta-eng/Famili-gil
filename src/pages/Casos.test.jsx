@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import Casos from './Casos.jsx'
 
 const navigate = vi.fn()
 vi.mock('react-router-dom', async (orig) => ({
@@ -10,19 +9,36 @@ vi.mock('react-router-dom', async (orig) => ({
   useNavigate: () => navigate,
 }))
 
-const casosNoBanco = [{ id: 'c1', tipo: 'pensao', titulo: 'Silva x Souza', arquivado: false }]
+const casosNoBanco = [
+  { id: 'c1', tipo: 'pensao', titulo: 'Silva x Souza', arquivado: false },
+  { id: 'c2', tipo: 'partilha', titulo: 'Silva x Souza', arquivado: true },
+]
 const insert = vi.fn(async (linha) => ({
   data: [{ id: 'novo', ...linha }], error: null,
 }))
 vi.mock('../lib/supabase.js', () => ({
   supabase: {
     from: () => ({
-      select: () => ({ eq: () => ({ order: async () => ({ data: casosNoBanco, error: null }) }) }),
+      select: () => ({
+        eq: (field, value) => ({
+          order: async () => ({
+            data: casosNoBanco.filter(c => c[field] === value),
+            error: null,
+          }),
+        }),
+      }),
       insert: (linha) => ({ select: async () => insert(linha) }),
       update: () => ({ eq: async () => ({ error: null }) }),
     }),
   },
 }))
+
+vi.mock('../lib/api.js', () => ({
+  apiFetch: vi.fn(async () => ({ ok: true })),
+}))
+
+import Casos from './Casos.jsx'
+import { apiFetch } from '../lib/api.js'
 
 describe('Casos', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -42,5 +58,21 @@ describe('Casos', () => {
       expect.objectContaining({ titulo: 'Partilha ABC', tipo: 'partilha' }),
     ))
     expect(navigate).toHaveBeenCalledWith('/caso/novo')
+  })
+
+  it('exclui definitivamente um caso arquivado após digitar o título', async () => {
+    render(<MemoryRouter><Casos /></MemoryRouter>)
+    await userEvent.click(screen.getByRole('button', { name: /arquivados/i }))
+    await waitFor(() => expect(screen.getByText('Silva x Souza')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: /excluir definitivamente/i }))
+    // botão de confirmar começa desabilitado
+    const confirmar = screen.getByRole('button', { name: /confirmar exclus[ãa]o/i })
+    expect(confirmar).toBeDisabled()
+    await userEvent.type(screen.getByLabelText(/digite o t[íi]tulo/i), 'Silva x Souza')
+    expect(confirmar).toBeEnabled()
+    await userEvent.click(confirmar)
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/api/casos/excluir', expect.objectContaining({
+      method: 'POST', body: { casoId: expect.any(String), tituloConfirmacao: 'Silva x Souza' },
+    })))
   })
 })

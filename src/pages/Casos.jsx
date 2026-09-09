@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
+import { apiFetch } from '../lib/api.js'
 import { Button, Card, Badge, Field, Input, Alert, PageHeader, EmptyState } from '../components/ui.jsx'
 
 const ROTULO_TIPO = { pensao: 'Pensão', partilha: 'Partilha' }
@@ -13,6 +14,9 @@ export default function Casos() {
   const [titulo, setTitulo] = useState('')
   const [tipo, setTipo] = useState('pensao')
   const [erro, setErro] = useState('')
+  const [excluindo, setExcluindo] = useState(null)
+  const [tituloDigitado, setTituloDigitado] = useState('')
+  const [erroExcluir, setErroExcluir] = useState('')
 
   async function carregar(mostrarArquivados) {
     const { data, error } = await supabase
@@ -70,7 +74,12 @@ export default function Casos() {
               <Badge tone="indigo" className="mt-1">{ROTULO_TIPO[c.tipo] || c.tipo}</Badge>
             </button>
             {verArquivados ? (
-              <Button variant="secondary" size="sm" onClick={() => desarquivar(c.id)}>Desarquivar</Button>
+              <div className="flex gap-2">
+                <Button variant="secondary" size="sm" onClick={() => desarquivar(c.id)}>Desarquivar</Button>
+                <Button variant="danger" size="sm" onClick={() => { setExcluindo(c); setTituloDigitado(''); setErroExcluir('') }}>
+                  Excluir definitivamente
+                </Button>
+              </div>
             ) : (
               <Button variant="danger" size="sm" onClick={() => arquivar(c.id)}>Arquivar</Button>
             )}
@@ -109,6 +118,42 @@ export default function Casos() {
               <Button type="submit">Criar</Button>
             </div>
           </form>
+        </div>
+      )}
+
+      {excluindo && (
+        <div className="fixed inset-0 flex items-center justify-center bg-slate-900/40 px-4">
+          <div className="w-full max-w-md space-y-3 rounded-2xl bg-white p-5 shadow-lg text-sm">
+            <h2 className="font-semibold text-slate-900">Excluir definitivamente</h2>
+            <p className="text-slate-600">
+              Isto apaga o caso <strong>{excluindo.titulo}</strong> e tudo ligado a ele — parâmetros,
+              parcelas, pagamentos, bens, passivos, cenários, memórias de cálculo e anexos. Não há como desfazer.
+            </p>
+            <Field label={`Digite o título do caso para confirmar: "${excluindo.titulo}"`}>
+              <Input value={tituloDigitado} onChange={(e) => setTituloDigitado(e.target.value)} />
+            </Field>
+            {erroExcluir && <Alert>{erroExcluir}</Alert>}
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setExcluindo(null)}>Cancelar</Button>
+              <Button
+                variant="danger"
+                disabled={tituloDigitado !== excluindo.titulo}
+                onClick={async () => {
+                  setErroExcluir('')
+                  try {
+                    await apiFetch('/api/casos/excluir', {
+                      method: 'POST',
+                      body: { casoId: excluindo.id, tituloConfirmacao: tituloDigitado },
+                    })
+                    setExcluindo(null)
+                    carregar(verArquivados)
+                  } catch (err) { setErroExcluir(err.message) }
+                }}
+              >
+                Confirmar exclusão
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
