@@ -108,6 +108,34 @@ export function fatorMensal(serieMensal, iniISO, fimISO) {
 
 export const SERIE_DE_INDICE = { INPC: 'INPC', IGPM: 'IGPM', 'IPCA-E': 'IPCA15', IPCA: 'IPCA' }
 
+/** Meta SELIC anual (%) → fator de correção do mês. Puro. */
+export function metaSelicAnualParaFatorMensal(metaAA) {
+  return (1 + metaAA / 100) ** (1 / 12)
+}
+
+/**
+ * Sintetiza uma série SELIC diária para um mês projetado: taxa % em cada
+ * dia útil (seg–sex) tal que o produto sobre os ~21 dias úteis se aproxima
+ * do fator mensal alvo. APROXIMAÇÃO: ignora feriados — aceitável porque a
+ * projeção é auxiliar e passa por revisão do advogado.
+ * `new Date(Date.UTC(...))` com argumentos explícitos é determinístico
+ * (só constrói datas de calendário, não é "relógio").
+ * @returns {Record<string, number>} { 'YYYY-MM-DD': taxaDiaria% }
+ */
+export function sintetizarSelicDiariaProjetada(competenciaISO, metaAA) {
+  const taxaDiaria = 100 * ((1 + metaAA / 100) ** (1 / 252) - 1)
+  const [a, m] = competenciaISO.split('-').map(Number)
+  const out = {}
+  const ultimoDia = new Date(Date.UTC(a, m, 0)).getUTCDate()
+  for (let d = 1; d <= ultimoDia; d++) {
+    const iso = `${a}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    const wd = new Date(iso + 'T00:00:00Z').getUTCDay()
+    if (wd === 0 || wd === 6) continue
+    out[iso] = taxaDiaria
+  }
+  return out
+}
+
 const FUND_PRE = ['STJ, REsp 1.795.982/SP (Corte Especial)', 'CC, art. 397']
 const FUND_POS = ['Lei 14.905/2024 (arts. 389 e 406 do CC)', 'CC, art. 397']
 const FUND_CONV = ['título executivo', 'CC, art. 397']
