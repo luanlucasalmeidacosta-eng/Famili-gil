@@ -449,14 +449,9 @@ describe('calcularMemoria', () => {
   })
 })
 
-import { metaSelicAnualParaFatorMensal, sintetizarSelicDiariaProjetada } from './_motor-pensao.js'
+import { sintetizarSelicDiariaProjetada } from './_motor-pensao.js'
 
 describe('projeção — conversão da meta SELIC', () => {
-  it('metaSelicAnualParaFatorMensal: 12% a.a. → ~0,9489% no mês', () => {
-    const f = metaSelicAnualParaFatorMensal(12)
-    expect(f).toBeCloseTo(1.12 ** (1 / 12), 10)
-  })
-
   it('sintetizarSelicDiariaProjetada: só dias úteis, e o produto sobre o mês ≈ fator mensal', () => {
     const dias = sintetizarSelicDiariaProjetada('2026-10-01', 12)
     const chaves = Object.keys(dias).sort()

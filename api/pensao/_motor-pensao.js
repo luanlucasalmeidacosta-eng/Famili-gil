@@ -108,11 +108,6 @@ export function fatorMensal(serieMensal, iniISO, fimISO) {
 
 export const SERIE_DE_INDICE = { INPC: 'INPC', IGPM: 'IGPM', 'IPCA-E': 'IPCA15', IPCA: 'IPCA' }
 
-/** Meta SELIC anual (%) → fator de correção do mês. Puro. */
-export function metaSelicAnualParaFatorMensal(metaAA) {
-  return (1 + metaAA / 100) ** (1 / 12)
-}
-
 /**
  * Sintetiza uma série SELIC diária para um mês projetado: taxa % em cada
  * dia útil (seg–sex) tal que o produto sobre os ~21 dias úteis se aproxima
