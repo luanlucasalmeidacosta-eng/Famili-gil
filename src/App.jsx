@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './auth/AuthProvider.jsx'
 import Login from './pages/Login.jsx'
 import Casos from './pages/Casos.jsx'
 import CasoRouter from './pages/CasoRouter.jsx'
+import Biblioteca from './pages/Biblioteca.jsx'
 import Shell from './components/Shell.jsx'
 
 function Protegida({ children }) {
@@ -18,6 +19,7 @@ function Rotas() {
       <Route path="/login" element={session ? <Navigate to="/casos" replace /> : <Login />} />
       <Route path="/casos" element={<Protegida><Casos /></Protegida>} />
       <Route path="/caso/:id" element={<Protegida><CasoRouter /></Protegida>} />
+      <Route path="/biblioteca" element={<Protegida><Biblioteca /></Protegida>} />
       <Route path="*" element={<Navigate to="/casos" replace />} />
     </Routes>
   )

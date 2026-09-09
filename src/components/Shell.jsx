@@ -13,6 +13,12 @@ export default function Shell({ children }) {
             <span className="text-sm font-semibold text-slate-900">FamiliÁgil</span>
           </Link>
           {session && (
+            <nav className="ml-6 flex gap-4 text-sm">
+              <Link to="/casos" className="text-slate-600 hover:text-indigo-600">Casos</Link>
+              <Link to="/biblioteca" className="text-slate-600 hover:text-indigo-600">Biblioteca</Link>
+            </nav>
+          )}
+          {session && (
             <div className="flex items-center gap-3 text-sm text-slate-500">
               <span className="hidden sm:inline">{session.user?.email}</span>
               <Button variant="ghost" size="sm" onClick={sair}>Sair</Button>
