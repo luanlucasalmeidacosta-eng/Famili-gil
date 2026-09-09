@@ -1,0 +1,13 @@
+# Não enviar para o deploy da Vercel — sintaxe de .gitignore.
+# Sem isto, cada api/**/*.test.js vira uma Serverless Function e o
+# projeto estoura o limite de funções do plano.
+
+*.test.js
+*.test.jsx
+**/*.test.js
+**/*.test.jsx
+
+# artefatos de desenvolvimento
+/scripts
+/.superpowers
+/coverage
