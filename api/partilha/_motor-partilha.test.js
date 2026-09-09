@@ -457,31 +457,31 @@ describe('sinalizarTributario', () => {
       quadroQuinhoes: { parteA: { torna: 0 }, parteB: { torna: 0 } },
       cenario: { tornas: [] },
     })
-    expect(r).toEqual([])
+    expect(r).toEqual({ entradas: [], avisos: [] })
   })
 
   it('excesso todo coberto por torna em dinheiro → só ITBI', () => {
-    const r = sinalizarTributario({
+    const { entradas } = sinalizarTributario({
       quadroQuinhoes: { parteA: { torna: 200000 }, parteB: { torna: -200000 } },
       cenario: { tornas: [{ de: 'parte_a', para: 'parte_b', valor: 200000, forma: 'dinheiro' }] },
     })
-    expect(r).toEqual([{ tipo: 'ITBI', base: 200000, fundamento: expect.stringContaining('Súmula 116') }])
+    expect(entradas).toEqual([{ tipo: 'ITBI', base: 200000, fundamento: expect.stringContaining('Súmula 116') }])
   })
 
   it('excesso sem nenhuma contrapartida → só ITCMD', () => {
-    const r = sinalizarTributario({
+    const { entradas } = sinalizarTributario({
       quadroQuinhoes: { parteA: { torna: 200000 }, parteB: { torna: -200000 } },
       cenario: { tornas: [{ de: 'parte_a', para: 'parte_b', valor: 200000, forma: 'sem_contrapartida' }] },
     })
-    expect(r).toEqual([{ tipo: 'ITCMD', base: 200000, fundamento: expect.stringContaining('doação') }])
+    expect(entradas).toEqual([{ tipo: 'ITCMD', base: 200000, fundamento: expect.stringContaining('doação') }])
   })
 
   it('excesso parcialmente coberto → ITBI na parte onerosa e ITCMD no restante', () => {
-    const r = sinalizarTributario({
+    const { entradas } = sinalizarTributario({
       quadroQuinhoes: { parteA: { torna: 200000 }, parteB: { torna: -200000 } },
       cenario: { tornas: [{ de: 'parte_a', para: 'parte_b', valor: 120000, forma: 'dinheiro' }] },
     })
-    expect(r).toEqual([
+    expect(entradas).toEqual([
       { tipo: 'ITBI', base: 120000, fundamento: expect.stringContaining('Súmula 116') },
       { tipo: 'ITCMD', base: 80000, fundamento: expect.stringContaining('doação') },
     ])
@@ -493,7 +493,7 @@ describe('sinalizarTributario', () => {
       cenario: { tornas: [{ de: 'parte_b', para: 'parte_a', valor: 25000, forma: 'sem_contrapartida' }] },
       regimeBens: 'participacao_final_aquestos',
     })
-    expect(r).toEqual([])
+    expect(r).toEqual({ entradas: [], avisos: [] })
   })
 
   it('a aferição é pela TOTALIDADE do patrimônio, não bem a bem (spec §13.2, item 11)', () => {
@@ -528,6 +528,81 @@ describe('sinalizarTributario', () => {
   })
 })
 
+describe('sinalizarTributario — valor do imposto', () => {
+  const quadroComExcesso = { parteA: { torna: 200000 }, parteB: { torna: -200000 } }
+
+  it('sem tributarioInput: mantém só a base e alerta a falta de alíquota', () => {
+    const { entradas, avisos } = sinalizarTributario({
+      quadroQuinhoes: quadroComExcesso,
+      cenario: { tornas: [{ forma: 'sem_contrapartida', valor: 0 }] },
+      regimeBens: 'comunhao_parcial',
+    })
+    const itcmd = entradas.find((x) => x.tipo === 'ITCMD')
+    expect(itcmd.base).toBe(200000)
+    expect(itcmd.valorImposto).toBeUndefined()
+    expect(avisos).toContain('Informe a alíquota de ITCMD para calcular o valor do imposto.')
+  })
+
+  it('ITBI: valor = base * alíquota / 100', () => {
+    const { entradas } = sinalizarTributario({
+      quadroQuinhoes: quadroComExcesso,
+      cenario: { tornas: [{ forma: 'dinheiro', valor: 200000 }] }, // torna onerosa cobre todo o excesso → base ITBI = 200000
+      regimeBens: 'comunhao_parcial',
+      tributarioInput: { itbi: { aliquota: 2, norma: 'Lei Municipal nº 1/2020' } },
+    })
+    const itbi = entradas.find((x) => x.tipo === 'ITBI')
+    expect(itbi.base).toBe(200000)
+    expect(itbi.aliquota).toBe(2)
+    expect(itbi.aliquotaNorma).toBe('Lei Municipal nº 1/2020')
+    expect(itbi.valorImposto).toBe(4000)
+  })
+
+  it('ITCMD: valor pelas faixas progressivas', () => {
+    const { entradas } = sinalizarTributario({
+      quadroQuinhoes: quadroComExcesso,
+      cenario: { tornas: [{ forma: 'sem_contrapartida', valor: 0 }] }, // base ITCMD = 200000
+      regimeBens: 'comunhao_parcial',
+      tributarioInput: { itcmd: { faixas: [{ ate: 100000, aliquota: 4 }, { ate: null, aliquota: 6 }], norma: 'Lei Estadual nº 2/2019' } },
+    })
+    const itcmd = entradas.find((x) => x.tipo === 'ITCMD')
+    // 100000*4% + 100000*6% = 4000 + 6000 = 10000
+    expect(itcmd.valorImposto).toBe(10000)
+    expect(itcmd.aliquotaNorma).toBe('Lei Estadual nº 2/2019')
+  })
+
+  it('valorItbiManual vence o calculado, sem apagar o calculado', () => {
+    const { entradas } = sinalizarTributario({
+      quadroQuinhoes: quadroComExcesso,
+      cenario: { tornas: [{ forma: 'dinheiro', valor: 200000 }] },
+      regimeBens: 'comunhao_parcial',
+      tributarioInput: { itbi: { aliquota: 2, norma: 'x' }, valorItbiManual: 3500 },
+    })
+    const itbi = entradas.find((x) => x.tipo === 'ITBI')
+    expect(itbi.valorImposto).toBe(4000)
+    expect(itbi.valorImpostoManual).toBe(3500)
+  })
+
+  it('faixas inválidas no input: alerta, sem valor', () => {
+    const { entradas } = sinalizarTributario({
+      quadroQuinhoes: quadroComExcesso,
+      cenario: { tornas: [{ forma: 'sem_contrapartida', valor: 0 }] },
+      regimeBens: 'comunhao_parcial',
+      tributarioInput: { itcmd: { faixas: [{ ate: 100000, aliquota: 4 }], norma: 'x' } }, // sem faixa aberta
+    })
+    const itcmd = entradas.find((x) => x.tipo === 'ITCMD')
+    expect(itcmd.valorImposto).toBeUndefined()
+  })
+
+  it('participação final continua retornando [] mesmo com tributarioInput', () => {
+    expect(sinalizarTributario({
+      quadroQuinhoes: quadroComExcesso,
+      cenario: { tornas: [] },
+      regimeBens: 'participacao_final_aquestos',
+      tributarioInput: { itbi: { aliquota: 2, norma: 'x' } },
+    })).toEqual({ entradas: [], avisos: [] })
+  })
+})
+
 import { calcularPartilha } from './_motor-partilha.js'
 
 describe('calcularPartilha', () => {
@@ -548,7 +623,8 @@ describe('calcularPartilha', () => {
     expect(r.linhaTempo.length).toBeGreaterThan(0)
     expect(r.alertasTributarios).toEqual([{ tipo: 'ITBI', base: 200000, fundamento: expect.stringContaining('Súmula 116') }])
     expect(r.totais).toEqual({ acervoBruto: 400000, passivosDedutiveis: 0, acervoLiquido: 400000, somaTornas: 200000 })
-    expect(r.alertas).toEqual([])
+    // sem `cenario.tributarioInput`, sinalizarTributario acrescenta o aviso de alíquota faltante ao array geral
+    expect(r.alertas).toEqual(['Informe a alíquota de ITBI para calcular o valor do imposto.'])
   })
 
   it('determinístico: dois runs → JSON idêntico', () => {

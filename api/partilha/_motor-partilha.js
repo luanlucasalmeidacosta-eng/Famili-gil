@@ -9,6 +9,7 @@
 // Isolamento: este arquivo NUNCA importa de api/pensao/*.
 
 import { arredonda2 } from '../_core/dinheiro.js'
+import { calcularValorItcmd, validarFaixasItcmd } from '../_core/tributos.js'
 
 const SENTINELA_SEM_FIM = '9999-12-31' // "constância" sem marco de fim informado
 
@@ -399,40 +400,62 @@ export function calcularQuinhoes({ regimeBens, linhasBens, totaisAcervo, aquesto
 }
 
 /**
- * @returns {Array<{tipo:'ITBI'|'ITCMD', base:number, fundamento:string}>}
+ * Sinaliza a incidência tributária sobre o excesso de meação e, quando o cenário
+ * traz a alíquota/norma (`tributarioInput`), calcula o valor do imposto: ITBI por
+ * alíquota plana, ITCMD pelas faixas progressivas de `calcularValorItcmd`.
+ *
+ * Na participação final nos aquestos o campo `torna` do quadro NÃO é excesso de
+ * meação sobre bens divididos desigualmente: é o crédito de compensação do
+ * CC art. 1.674/1.685, apurado por lei sobre patrimônios separados. Rotular esse
+ * crédito como "doação sujeita a ITCMD" seria uma afirmação jurídica errada num
+ * documento protocolado.
+ *
+ * @returns {{entradas: Array<{tipo:'ITBI'|'ITCMD', base:number, fundamento:string,
+ *   aliquota?:number, aliquotaNorma?:string, valorImposto?:number, valorImpostoManual?:number}>,
+ *   avisos: string[]}}
  */
-export function sinalizarTributario({ quadroQuinhoes, cenario, regimeBens }) {
-  // Na participação final nos aquestos o campo `torna` do quadro NÃO é excesso de
-  // meação sobre bens divididos desigualmente: é o crédito de compensação do
-  // CC art. 1.674/1.685, apurado por lei sobre patrimônios separados. Rotular esse
-  // crédito como "doação sujeita a ITCMD" seria uma afirmação jurídica errada num
-  // documento protocolado. O enquadramento tributário do crédito é questão distinta
-  // e fica fora do escopo do motor (que, por regra, nunca calcula valor de imposto).
-  if (regimeBens === 'participacao_final_aquestos') return []
+export function sinalizarTributario({ quadroQuinhoes, cenario, regimeBens, tributarioInput }) {
+  if (regimeBens === 'participacao_final_aquestos') return { entradas: [], avisos: [] }
 
   const excesso = Math.abs(quadroQuinhoes.parteA.torna)
-  if (excesso <= 0.01) return []
+  if (excesso <= 0.01) return { entradas: [], avisos: [] }
 
   const tornaOnerosaInformada = (cenario.tornas || [])
     .filter((t) => t.forma === 'dinheiro' || t.forma === 'bem')
     .reduce((s, t) => s + t.valor, 0)
 
-  const alertasTributarios = []
+  const entradas = []
+  const avisos = []
+  const inp = tributarioInput || {}
+
   const baseItbi = Math.min(excesso, tornaOnerosaInformada)
   if (baseItbi > 0.01) {
-    alertasTributarios.push({
-      tipo: 'ITBI', base: arredonda2(baseItbi),
-      fundamento: 'Súmula 116 do STF — legítima a cobrança de imposto de reposição quando há desigualdade nos valores partilhados; incidência sobre a torna dentro do limite da meação.',
-    })
+    const e = { tipo: 'ITBI', base: arredonda2(baseItbi), fundamento: 'Súmula 116 do STF — legítima a cobrança de imposto de reposição quando há desigualdade nos valores partilhados; incidência sobre a torna dentro do limite da meação.' }
+    if (inp.itbi && typeof inp.itbi.aliquota === 'number') {
+      e.aliquota = inp.itbi.aliquota
+      e.aliquotaNorma = inp.itbi.norma || '—'
+      e.valorImposto = arredonda2(e.base * inp.itbi.aliquota / 100)
+      if (typeof inp.valorItbiManual === 'number') e.valorImpostoManual = arredonda2(inp.valorItbiManual)
+    } else {
+      avisos.push('Informe a alíquota de ITBI para calcular o valor do imposto.')
+    }
+    entradas.push(e)
   }
+
   const baseItcmd = excesso - baseItbi
   if (baseItcmd > 0.01) {
-    alertasTributarios.push({
-      tipo: 'ITCMD', base: arredonda2(baseItcmd),
-      fundamento: 'Excesso de meação sem contrapartida onerosa caracteriza doação — distinção jurisprudencial ITBI × ITCMD no excesso de meação.',
-    })
+    const e = { tipo: 'ITCMD', base: arredonda2(baseItcmd), fundamento: 'Excesso de meação sem contrapartida onerosa caracteriza doação — distinção jurisprudencial ITBI × ITCMD no excesso de meação.' }
+    if (inp.itcmd && Array.isArray(inp.itcmd.faixas) && validarFaixasItcmd(inp.itcmd.faixas).ok) {
+      e.aliquotaNorma = inp.itcmd.norma || '—'
+      e.valorImposto = calcularValorItcmd(e.base, inp.itcmd.faixas)
+      if (typeof inp.valorItcmdManual === 'number') e.valorImpostoManual = arredonda2(inp.valorItcmdManual)
+    } else {
+      avisos.push('Informe a alíquota de ITCMD para calcular o valor do imposto.')
+    }
+    entradas.push(e)
   }
-  return alertasTributarios
+
+  return { entradas, avisos }
 }
 
 /**
@@ -446,7 +469,11 @@ export function calcularPartilha({ regimeBens, marcos, bens, passivos, cenario }
     regimeBens, linhasBens: acervo.linhasBens, totaisAcervo: acervo.totaisAcervo,
     aquestos: acervo.aquestos, passivos, cenario,
   })
-  const alertasTributarios = sinalizarTributario({ quadroQuinhoes: quinhoes.quadroQuinhoes, cenario, regimeBens })
+  const trib = sinalizarTributario({
+    quadroQuinhoes: quinhoes.quadroQuinhoes, cenario, regimeBens,
+    tributarioInput: cenario.tributarioInput,
+  })
+  const alertasTributarios = trib.entradas
   const somaTornas = arredonda2((cenario.tornas || []).reduce((s, t) => s + t.valor, 0))
 
   return {
@@ -455,6 +482,6 @@ export function calcularPartilha({ regimeBens, marcos, bens, passivos, cenario }
     linhaTempo: acervo.linhaTempo,
     alertasTributarios,
     totais: { ...acervo.totaisAcervo, somaTornas },
-    alertas: [...acervo.alertas, ...quinhoes.alertas],
+    alertas: [...acervo.alertas, ...quinhoes.alertas, ...trib.avisos],
   }
 }
