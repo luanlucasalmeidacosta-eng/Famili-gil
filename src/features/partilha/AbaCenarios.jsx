@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { apiFetch } from '../../lib/api.js'
-import { validarFaixasItcmd } from '../biblioteca/tributos.js'
+import { validarFaixasItcmd, montarFaixasItcmd } from '../biblioteca/tributos.js'
 import { Button, Field, Input } from '../../components/ui.jsx'
 import { classificarBem } from './classificar.js'
 
@@ -91,15 +91,22 @@ export default function AbaCenarios({ caso }) {
     return null
   }
 
+  // Guarda de range da alíquota de ITBI: não deixa gravar valor negativo/NaN nem
+  // um bloco de ITBI pela metade (norma sem alíquota).
+  function erroItbi() {
+    const raw = trib.itbiAliquota
+    if (raw === '') return trib.itbiNorma ? 'Informe uma alíquota de ITBI válida (≥ 0).' : null
+    const n = Number(raw)
+    if (Number.isNaN(n) || n < 0) return 'Informe uma alíquota de ITBI válida (≥ 0).'
+    return null
+  }
+
   function montarTributarioInput() {
     const out = { itbi: null, itcmd: null, valorItbiManual: null, valorItcmdManual: null }
     if (trib.itbiAliquota !== '' && trib.itbiNorma) {
       out.itbi = { aliquota: Number(trib.itbiAliquota), norma: trib.itbiNorma }
     }
-    const faixas = trib.itcmdFaixas.map((x, idx) => ({
-      ate: idx === trib.itcmdFaixas.length - 1 ? null : Number(x.ate),
-      aliquota: Number(x.aliquota),
-    }))
+    const faixas = montarFaixasItcmd(trib.itcmdFaixas)
     if (trib.itcmdNorma && validarFaixasItcmd(faixas).ok) {
       out.itcmd = { faixas, norma: trib.itcmdNorma }
     }
@@ -150,6 +157,8 @@ export default function AbaCenarios({ caso }) {
     setMsg('')
     const errFaixas = erroFaixasItcmd()
     if (errFaixas) { setMsg(`Erro: ${errFaixas}`); return }
+    const errItbi = erroItbi()
+    if (errItbi) { setMsg(`Erro: ${errItbi}`); return }
     const alocacoesArr = Object.entries(alocacoes).map(([bemId, a]) => ({ bemId, para: a.para, fracaoA: a.fracaoA }))
     const tributarioInput = montarTributarioInput()
     const { error } = await supabase.from('partilha_cenarios').insert({

@@ -42,6 +42,31 @@ describe('ListaAliquotas (itbi)', () => {
       expect.objectContaining({ tipo: 'itbi', uf: 'RJ', municipio: 'Niterói', aliquota: 2 }),
     ))
   })
+
+  it('rejeita alíquota de ITBI em branco com UF/município/norma preenchidos, sem gravar', async () => {
+    const { default: ListaAliquotas } = await import('./ListaAliquotas.jsx')
+    render(<ListaAliquotas tipo="itbi" />)
+    await userEvent.click(screen.getByRole('button', { name: /adicionar/i }))
+    await userEvent.type(screen.getByLabelText(/uf/i), 'RJ')
+    await userEvent.type(screen.getByLabelText(/munic[íi]pio/i), 'Niterói')
+    await userEvent.type(screen.getByLabelText(/norma/i), 'Lei Municipal nº 2.597/2008')
+    await userEvent.click(screen.getByRole('button', { name: /salvar/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/al[íi]quota de itbi v[áa]lida/i)
+    expect(insert).not.toHaveBeenCalled()
+  })
+
+  it('rejeita alíquota de ITBI negativa, sem gravar', async () => {
+    const { default: ListaAliquotas } = await import('./ListaAliquotas.jsx')
+    render(<ListaAliquotas tipo="itbi" />)
+    await userEvent.click(screen.getByRole('button', { name: /adicionar/i }))
+    await userEvent.type(screen.getByLabelText(/uf/i), 'RJ')
+    await userEvent.type(screen.getByLabelText(/munic[íi]pio/i), 'Niterói')
+    await userEvent.type(screen.getByLabelText(/al[íi]quota/i), '-1')
+    await userEvent.type(screen.getByLabelText(/norma/i), 'Lei Municipal nº 2.597/2008')
+    await userEvent.click(screen.getByRole('button', { name: /salvar/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/al[íi]quota de itbi v[áa]lida/i)
+    expect(insert).not.toHaveBeenCalled()
+  })
 })
 
 describe('ListaAliquotas (itcmd) — validação de faixas', () => {

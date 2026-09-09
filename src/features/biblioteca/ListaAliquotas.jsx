@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase.js'
-import { validarFaixasItcmd } from './tributos.js'
+import { validarFaixasItcmd, montarFaixasItcmd } from './tributos.js'
 import { Button, Card, Field, Input, Alert, EmptyState } from '../../components/ui.jsx'
 
 const VAZIO_ITBI = { uf: '', municipio: '', aliquota: '', norma: '', fonte_url: '', observacao: '' }
@@ -44,21 +44,20 @@ export default function ListaAliquotas({ tipo }) {
   const addFaixa = () => setForm((f) => ({ ...f, faixas: [...f.faixas, { ate: '', aliquota: '' }] }))
   const rmFaixa = (i) => setForm((f) => ({ ...f, faixas: f.faixas.filter((_, idx) => idx !== i) }))
 
-  function montarFaixas() {
-    // linhas totalmente vazias são descartadas; teto vazio => faixa aberta (ate: null)
-    return form.faixas
-      .filter((x) => !(x.ate === '' && x.aliquota === ''))
-      .map((x) => ({
-        ate: x.ate === '' ? null : Number(x.ate),
-        aliquota: Number(x.aliquota),
-      }))
-  }
+  // Mesma normalização usada pelo editor de faixas da aba Cenários.
+  const montarFaixas = () => montarFaixasItcmd(form.faixas)
 
   async function salvar(e) {
     e.preventDefault()
     setErro('')
     let linha
     if (tipo === 'itbi') {
+      const restoItbi = form.uf && form.municipio && form.norma
+      const aliq = Number(form.aliquota)
+      if ((form.aliquota === '' && restoItbi) || (form.aliquota !== '' && (Number.isNaN(aliq) || aliq < 0))) {
+        setErro('Informe uma alíquota de ITBI válida (≥ 0).')
+        return
+      }
       if (!form.uf || !form.municipio || form.aliquota === '' || !form.norma) {
         setErro('Preencha UF, município, alíquota e norma.')
         return
@@ -135,7 +134,8 @@ export default function ListaAliquotas({ tipo }) {
           {tipo === 'itbi' && (
             <>
               <Field label="Município"><Input value={form.municipio} onChange={(e) => setForm((f) => ({ ...f, municipio: e.target.value }))} required /></Field>
-              <Field label="Alíquota (%)"><Input type="number" step="0.01" value={form.aliquota} onChange={(e) => setForm((f) => ({ ...f, aliquota: e.target.value }))} required /></Field>
+              {/* sem `required` no HTML: a guarda de range em `salvar` dá a mensagem certa (≥ 0) */}
+              <Field label="Alíquota (%)"><Input type="number" step="0.01" value={form.aliquota} onChange={(e) => setForm((f) => ({ ...f, aliquota: e.target.value }))} /></Field>
             </>
           )}
           {tipo === 'itcmd' && (

@@ -37,6 +37,26 @@ export function validarFaixasItcmd(faixas) {
 }
 
 /**
+ * Normaliza as linhas do editor de faixas (form state, com strings vazias) para
+ * o formato do domínio, unificando os dois editores (biblioteca e Cenários):
+ *  - descarta linhas totalmente vazias (`ate === '' && aliquota === ''`);
+ *  - teto vazio (`ate === ''`) vira faixa aberta (`ate: null`) — é assim que a
+ *    última linha (que não tem campo de teto) chega aqui;
+ *  - as demais recebem `Number(ate)`.
+ * A validação de ordem/abertura fica a cargo de `validarFaixasItcmd`.
+ * @param {Array<{ate:string|number|null, aliquota:string|number}>} linhas
+ * @returns {Array<{ate:number|null, aliquota:number}>}
+ */
+export function montarFaixasItcmd(linhas) {
+  return (linhas || [])
+    .filter((x) => !(x.ate === '' && x.aliquota === ''))
+    .map((x) => ({
+      ate: x.ate === '' || x.ate === null ? null : Number(x.ate),
+      aliquota: Number(x.aliquota),
+    }))
+}
+
+/**
  * Valor do ITCMD sobre `base`, aplicando as faixas progressivas.
  * @param {number} base
  * @param {Array<{ate:number|null, aliquota:number}>} faixas — já validada

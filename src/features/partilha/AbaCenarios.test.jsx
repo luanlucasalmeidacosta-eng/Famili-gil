@@ -87,6 +87,36 @@ describe('AbaCenarios', () => {
       expect.objectContaining({ aliquota: 2, norma: 'Lei X' })))
   })
 
+  it('preenchendo só a alíquota da última faixa do ITCMD + norma, grava itcmd com faixa aberta', async () => {
+    const { default: AbaCenarios } = await import('./AbaCenarios.jsx')
+    render(<AbaCenarios caso={{ id: 'c1' }} />)
+    await screen.findByLabelText(/al[íi]quota de itbi/i)
+    await userEvent.type(screen.getByLabelText(/rótulo/i), 'Proposta ITCMD')
+    const inputsAliquota = screen.getAllByLabelText(/al[íi]quota da faixa/i)
+    await userEvent.type(inputsAliquota[inputsAliquota.length - 1], '7')
+    await userEvent.type(screen.getByLabelText(/norma do itcmd/i), 'Lei Estadual nº 10.705/2000')
+    await userEvent.click(screen.getByRole('button', { name: /salvar cen[áa]rio/i }))
+    await waitFor(() => expect(insert).toHaveBeenCalledWith('partilha_cenarios',
+      expect.objectContaining({
+        tributario_input: expect.objectContaining({
+          itcmd: { faixas: [{ ate: null, aliquota: 7 }], norma: 'Lei Estadual nº 10.705/2000' },
+        }),
+      }),
+    ))
+  })
+
+  it('rejeita alíquota de ITBI em branco com a norma preenchida, sem gravar', async () => {
+    const { default: AbaCenarios } = await import('./AbaCenarios.jsx')
+    render(<AbaCenarios caso={{ id: 'c1' }} />)
+    const campo = await screen.findByLabelText(/al[íi]quota de itbi/i)
+    await waitFor(() => expect(campo).toHaveValue(3))
+    await userEvent.clear(campo) // norma continua pré-preenchida ('Lei X')
+    await userEvent.type(screen.getByLabelText(/rótulo/i), 'Proposta ITBI inválida')
+    await userEvent.click(screen.getByRole('button', { name: /salvar cen[áa]rio/i }))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/al[íi]quota de itbi v[áa]lida/i))
+    expect(insert).not.toHaveBeenCalled()
+  })
+
   it('rejeita faixa de ITCMD com teto preenchido e alíquota em branco, sem gravar', async () => {
     const { default: AbaCenarios } = await import('./AbaCenarios.jsx')
     render(<AbaCenarios caso={{ id: 'c1' }} />)
