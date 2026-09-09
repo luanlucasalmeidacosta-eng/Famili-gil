@@ -4,7 +4,7 @@ import { SERIES, resolverSeries } from '../_core/indices-bcb.js'
 import { criarCachePort, criarCachePortFocus } from '../_core/cache-indices.js'
 import { resolverProjecao } from '../_core/focus-bcb.js'
 import { arredonda2 } from '../_core/dinheiro.js'
-import { calcularMemoria, SERIE_DE_INDICE, FRONTEIRA_LEI, sintetizarSelicDiariaProjetada } from './_motor-pensao.js'
+import { calcularMemoria, SERIE_DE_INDICE, sintetizarSelicDiariaProjetada } from './_motor-pensao.js'
 
 const erro = (msg, status) => Object.assign(new Error(msg), { status })
 const comp = (iso) => `${iso.slice(0, 7)}-01`
@@ -111,7 +111,8 @@ export async function processarCalculo({
         serieMensal[c] = m.taxa
       }
     }
-    series[mensal] = serieMensal
+    // `serieMensal` é a MESMA referência de `series[mensal]` (garantida não-nula
+    // pelo guard de `ultimaComp`); mutá-la acima já basta.
 
     if (regimeUsaSelic) {
       for (const c of mesesProjetar) {
