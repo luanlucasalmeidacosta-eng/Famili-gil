@@ -48,4 +48,16 @@ describe('AbaMemoria (partilha)', () => {
     expect(screen.getAllByText('R$ 400000,00').length).toBeGreaterThan(0) // valor alocado da parte A
     expect(screen.getByText('R$ 0,00')).toBeInTheDocument() // valor alocado da parte B
   })
+
+  it('mostra o valor do imposto e a norma quando calculado', async () => {
+    apiFetch.mockResolvedValueOnce({
+      ...memoria,
+      alertas_tributarios: [{ tipo: 'ITBI', base: 200000, fundamento: 'Súmula 116', aliquota: 2, aliquotaNorma: 'Lei Municipal nº 1/2020', valorImposto: 4000 }],
+    })
+    const { default: AbaMemoria } = await import('./AbaMemoria.jsx')
+    render(<AbaMemoria caso={{ id: 'c1' }} />)
+    await waitFor(() => expect(screen.getByText(/R\$ 4000,00/)).toBeInTheDocument())
+    expect(screen.getByText(/Lei Municipal nº 1\/2020/)).toBeInTheDocument()
+    expect(screen.getByText(/confira a vig[êe]ncia/i)).toBeInTheDocument()
+  })
 })

@@ -191,9 +191,22 @@ export default function AbaMemoria({ caso }) {
             <Card className="mt-4 p-3">
               <h3 className="font-medium text-slate-900">Enquadramento tributário</h3>
               {memoria.alertas_tributarios.map((t, i) => (
-                <p key={i}>{t.tipo} sobre {brl(t.base)} — {t.fundamento}</p>
+                <p key={i}>
+                  {t.tipo} sobre {brl(t.base)}
+                  {t.valorImposto != null && (
+                    <> — imposto {brl(t.valorImpostoManual ?? t.valorImposto)}
+                      {t.valorImpostoManual != null && ' (valor informado pelo advogado)'}
+                      {t.aliquota != null && ` · alíquota ${t.aliquota}%`}
+                      {t.aliquotaNorma && ` · ${t.aliquotaNorma}`}
+                    </>
+                  )}
+                </p>
               ))}
-              <p className="mt-1 text-xs italic text-slate-500">O valor do imposto não é calculado aqui.</p>
+              <p className="mt-1 text-xs italic text-slate-500">
+                {memoria.alertas_tributarios.some((t) => t.valorImposto != null)
+                  ? 'Valor calculado com a alíquota informada; confira a vigência da norma.'
+                  : 'O valor do imposto não é calculado aqui — informe a alíquota no cenário.'}
+              </p>
             </Card>
           )}
         </>
