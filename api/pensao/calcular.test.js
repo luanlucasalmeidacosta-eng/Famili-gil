@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { processarCalculo } from './calcular.js'
 
 // fake supabase: cada from(tabela) devolve um builder que resolve com dados fixos
@@ -117,5 +117,80 @@ describe('processarCalculo', () => {
       resolver: async () => ({ SELIC_DIARIA: {}, IPCA: { '2024-09-01': 0.5 } }),
       cachePort: {}, fetchImpl: () => {},
     })).rejects.toMatchObject({ status: 503 })
+  })
+})
+
+// ─────────────────  Plano 04b — modo projeção  ─────────────────
+
+function diarioFlat(deISO, ateISO, taxa = 0.04) {
+  const out = {}
+  let t = Date.parse(`${deISO}T00:00:00Z`)
+  const fim = Date.parse(`${ateISO}T00:00:00Z`)
+  while (t <= fim) {
+    out[new Date(t).toISOString().slice(0, 10)] = taxa
+    t += 86400000
+  }
+  return out
+}
+
+const parcelaProj = [{ id: 'p1', competencia: '2026-06-01', vencimento: '2026-06-10', valor_devido: 1000, ativa: true }]
+
+describe('processarCalculo — projeção (04b)', () => {
+  it('sem permitirProjecao: 422 quando a data-base passa do último índice firme', async () => {
+    const tabelas = baseTabelas({ pensao_parcelas: { data: parcelaProj, error: null } })
+    await expect(processarCalculo({
+      supabase: fakeSb(tabelas), casoId: 'c1', dataBase: '2026-11-15',
+      resolver: async () => ({
+        SELIC_DIARIA: diarioFlat('2026-06-01', '2026-08-31'),
+        IPCA: { '2026-06-01': 0.3, '2026-07-01': 0.3, '2026-08-01': 0.3 },
+      }),
+      cachePort: {}, fetchImpl: () => {},
+    })).rejects.toMatchObject({ status: 422 })
+  })
+
+  it('com permitirProjecao e IPCA: projeta pelo Focus, marca as linhas e grava dois totais + boletim', async () => {
+    const tabelas = baseTabelas({ pensao_parcelas: { data: parcelaProj, error: null } })
+    const resolverProjecaoImpl = vi.fn(async () => ({
+      dataBoletim: '2026-09-05',
+      series: {
+        IPCA: { '2026-09-01': 0.30, '2026-10-01': 0.32, '2026-11-01': 0.28 },
+        SELIC: { '2026-09-01': 15, '2026-10-01': 15, '2026-11-01': 15 },
+      },
+    }))
+    const out = await processarCalculo({
+      supabase: fakeSb(tabelas), casoId: 'c1', dataBase: '2026-11-15',
+      resolver: async () => ({
+        SELIC_DIARIA: diarioFlat('2026-06-01', '2026-08-31'),
+        IPCA: { '2026-06-01': 0.3, '2026-07-01': 0.3, '2026-08-01': 0.3 },
+      }),
+      cachePort: {}, fetchImpl: () => {},
+      permitirProjecao: true, projecoesManuais: [], resolverProjecaoImpl, cachePortFocus: {},
+    })
+    expect(out).toMatchObject({ versao: 1 })
+    const ins = tabelas.__inserted__
+    expect(ins.linhas.every((l) => l.projetado === true || l.projetado === false)).toBe(true)
+    expect(ins.linhas.some((l) => l.projetado)).toBe(true)
+    expect(ins.totais).toHaveProperty('saldoAteUltimoIndiceFirme')
+    expect(ins.totais).toHaveProperty('saldoComProjecao')
+    expect(ins.parametros_snapshot.projecao.dataBoletimFocus).toBe('2026-09-05')
+    expect(resolverProjecaoImpl).toHaveBeenCalled()
+  })
+
+  it('índice INPC sem projeção manual para um mês → 422 apontando o mês', async () => {
+    const tabelas = baseTabelas({
+      pensao_parcelas: { data: parcelaProj, error: null },
+      pensao_parametros: { data: { ...paramsOk, indice_correcao: 'INPC', regime_juros_convencionado: '1_am_simples' }, error: null },
+    })
+    await expect(processarCalculo({
+      supabase: fakeSb(tabelas), casoId: 'c1', dataBase: '2026-11-15',
+      resolver: async () => ({
+        SELIC_DIARIA: {},
+        INPC: { '2026-06-01': 0.3, '2026-07-01': 0.3, '2026-08-01': 0.3 },
+      }),
+      cachePort: {}, fetchImpl: () => {},
+      permitirProjecao: true,
+      projecoesManuais: [{ competencia: '2026-09-01', taxa: 0.3, fonte: 'x' }],
+      resolverProjecaoImpl: vi.fn(), cachePortFocus: {},
+    })).rejects.toMatchObject({ status: 422 })
   })
 })
