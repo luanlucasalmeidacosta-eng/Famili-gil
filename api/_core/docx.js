@@ -3,6 +3,7 @@ import { Document, Packer, Paragraph, HeadingLevel, Table, TableRow, TableCell, 
 
 const brl = (n) => `R$ ${Number(n).toFixed(2).replace('.', ',')}`
 const cel = (t) => new TableCell({ children: [new Paragraph(String(t))] })
+const brDataISO = (iso) => { const [a, m, d] = String(iso).slice(0, 10).split('-'); return `${d}/${m}/${a}` }
 
 /** @returns {Promise<Uint8Array>} */
 export async function pensaoParaDocx(memoria, caso) {
@@ -27,20 +28,24 @@ export async function pensaoParaDocx(memoria, caso) {
     new Paragraph(''),
   ]
 
-  const temProjecao = linhas.some((l) => l.projetado)
+  // Sem projeção, o export tem que ser IDÊNTICO ao de antes do 04b (§6.5): a
+  // coluna "Obs." e a célula extra em TOTAIS só existem quando há projeção.
+  const temProjecao = linhas.some((l) => l.projetado) || memoria.parametros_snapshot?.projecao?.ligada === true
+  const colunas = ['Competência', 'Vencimento', 'Valor original', 'Correção', 'Juros', 'Pagamentos', 'Saldo']
   const tabela = new Table({
     rows: [
-      new TableRow({ children: ['Competência', 'Vencimento', 'Valor original', 'Correção', 'Juros', 'Pagamentos', 'Saldo', 'Obs.'].map(cel) }),
+      new TableRow({ children: [...colunas, ...(temProjecao ? ['Obs.'] : [])].map(cel) }),
       ...linhas.map((l) => new TableRow({
         children: [
           l.competencia, l.vencimento, brl(l.valorDevidoOriginal), brl(l.correcao.valor),
           brl(l.juros.valor), brl(l.pagamentosAbatidos.reduce((s, p) => s + p.valorPago, 0)), brl(l.saldoAtualizado),
-          l.projetado ? `projetado${l.fonteProjecao ? ` (${l.fonteProjecao})` : ''}` : '',
+          ...(temProjecao ? [l.projetado ? `projetado${l.fonteProjecao ? ` (${l.fonteProjecao})` : ''}` : ''] : []),
         ].map(cel),
       })),
       new TableRow({ children: [
         'TOTAIS', '', brl(memoria.totais.somaOriginal), brl(memoria.totais.somaCorrecao),
-        brl(memoria.totais.somaJuros), brl(memoria.totais.somaPagamentos), brl(memoria.totais.saldo), '',
+        brl(memoria.totais.somaJuros), brl(memoria.totais.somaPagamentos), brl(memoria.totais.saldo),
+        ...(temProjecao ? [''] : []),
       ].map(cel) }),
     ],
   })
@@ -51,10 +56,15 @@ export async function pensaoParaDocx(memoria, caso) {
         new Paragraph(`Saldo com projeção: ${brl(memoria.totais.saldoComProjecao)}`),
       ]
     : []
-  const obsProjecao = (memoria.parametros_snapshot?.projecao?.ligada || temProjecao)
+  const projSnap = memoria.parametros_snapshot?.projecao
+  const obsProjecao = (projSnap?.ligada || temProjecao)
     ? [
         new Paragraph({ text: 'Observação — correção projetada', heading: HeadingLevel.HEADING_2 }),
-        new Paragraph(memoria.parametros_snapshot?.projecao?.nota || ''),
+        // Citação do §6.5: fonte da projeção.
+        new Paragraph(projSnap?.dataBoletimFocus
+          ? `Projeção conforme Boletim Focus de ${brDataISO(projSnap.dataBoletimFocus)}`
+          : 'Projeção informada pelo advogado'),
+        new Paragraph(projSnap?.nota || ''),
       ]
     : []
 

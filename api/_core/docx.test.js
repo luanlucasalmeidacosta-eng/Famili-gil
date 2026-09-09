@@ -49,19 +49,39 @@ describe('pensaoParaDocx', () => {
     expect(bytesSem[1]).toBe(0x4b)
   })
 
-  it('marca parcelas projetadas, imprime dois totais e a observação', async () => {
+  it('marca parcelas projetadas, imprime dois totais e a observação com a citação do boletim', async () => {
     const mem = {
       ...memoria,
       linhas: [{ ...memoria.linhas[0], projetado: true, fonteProjecao: 'Focus de 2026-09-05' }],
       totais: { ...memoria.totais, saldoAteUltimoIndiceFirme: 1005, saldoComProjecao: 1015 },
-      parametros_snapshot: { projecao: { ligada: true, nota: 'Nota de teste sobre projeção.' } },
+      parametros_snapshot: { projecao: { ligada: true, dataBoletimFocus: '2026-09-05', nota: 'Nota de teste sobre projeção.' } },
     }
     const xml = await textoDoDocx(await pensaoParaDocx(mem, caso))
     expect(xml).toMatch(/projet/i)
     expect(xml).toContain('último índice firme')
     expect(xml).toContain('com projeção')
     expect(xml).toContain('Observação — correção projetada')
+    expect(xml).toContain('Boletim Focus de 05/09/2026') // I-5: citação §6.5
     expect(xml).toContain('Nota de teste sobre projeção.')
+  })
+
+  it('I-5: projeção só manual (sem dataBoletimFocus) → cita "informada pelo advogado"', async () => {
+    const mem = {
+      ...memoria,
+      linhas: [{ ...memoria.linhas[0], projetado: true, fonteProjecao: 'informado pelo advogado' }],
+      totais: { ...memoria.totais, saldoAteUltimoIndiceFirme: 1005, saldoComProjecao: 1015 },
+      parametros_snapshot: { projecao: { ligada: true, nota: 'x' } },
+    }
+    const xml = await textoDoDocx(await pensaoParaDocx(mem, caso))
+    expect(xml).toContain('Projeção informada pelo advogado')
+  })
+
+  it('I-4: sem projeção → estrutura idêntica à de antes do 04b (sem coluna Obs., sem dois totais)', async () => {
+    const xml = await textoDoDocx(await pensaoParaDocx(memoria, caso))
+    expect(xml).toContain('Saldo') // cabeçalho normal segue lá
+    expect(xml).not.toContain('Obs.')
+    expect(xml).not.toContain('último índice firme')
+    expect(xml).not.toContain('Observação — correção projetada')
   })
 })
 

@@ -25,12 +25,12 @@ describe('pensaoParaXlsx', () => {
     expect(textos.join(' ')).toContain('815')
   })
 
-  it('marca projetadas, imprime dois totais e a observação', async () => {
+  it('marca projetadas, imprime dois totais e a observação com a citação do boletim', async () => {
     const mem = {
       ...memoria,
       linhas: [{ ...memoria.linhas[0], projetado: true, fonteProjecao: 'Focus de 2026-09-05' }],
       totais: { ...memoria.totais, saldoAteUltimoIndiceFirme: 1005, saldoComProjecao: 1015 },
-      parametros_snapshot: { projecao: { ligada: true, nota: 'Nota de teste sobre projeção.' } },
+      parametros_snapshot: { projecao: { ligada: true, dataBoletimFocus: '2026-09-05', nota: 'Nota de teste sobre projeção.' } },
     }
     const bytes = await pensaoParaXlsx(mem, caso)
     const wb = new ExcelJS.Workbook()
@@ -42,7 +42,21 @@ describe('pensaoParaXlsx', () => {
     expect(joined).toMatch(/projetad/i)
     expect(joined).toContain('último índice firme')
     expect(joined).toContain('com projeção')
+    expect(joined).toContain('Boletim Focus de 05/09/2026') // I-5: citação §6.5
     expect(joined).toContain('Nota de teste sobre projeção.')
+  })
+
+  it('I-4: sem projeção → estrutura idêntica à de antes do 04b (sem coluna Projetado)', async () => {
+    const bytes = await pensaoParaXlsx(memoria, caso)
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load(bytes)
+    const ws = wb.worksheets[0]
+    const textos = []
+    ws.eachRow((r) => r.eachCell((c) => textos.push(String(c.value))))
+    const joined = textos.join(' ')
+    expect(joined).not.toContain('Projetado')
+    expect(joined).not.toContain('último índice firme')
+    expect(joined).not.toContain('Observação — correção projetada')
   })
 })
 

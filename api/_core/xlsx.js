@@ -1,6 +1,8 @@
 // api/_core/xlsx.js
 import ExcelJS from 'exceljs'
 
+const brDataISO = (iso) => { const [a, m, d] = String(iso).slice(0, 10).split('-'); return `${d}/${m}/${a}` }
+
 /**
  * @param {object} memoria linha de pensao_memoria (linhas/totais/data_base/versao)
  * @param {object} caso linha de casos (parte_a/parte_b/numero_processo)
@@ -13,7 +15,10 @@ export async function pensaoParaXlsx(memoria, caso) {
   ws.addRow([`Exequente: ${caso.parte_a || ''}`, `Executado: ${caso.parte_b || ''}`])
   ws.addRow([`Processo: ${caso.numero_processo || '—'}`, `Data-base: ${memoria.data_base}`, `Versão: ${memoria.versao}`])
   ws.addRow([])
-  const head = ['Competência', 'Vencimento', 'Valor original', 'Fator correção', 'Correção (R$)', 'Juros (R$)', 'Pagamentos abatidos (R$)', 'Saldo atualizado', 'Projetado']
+  // Sem projeção, o export tem que ser IDÊNTICO ao de antes do 04b (§6.5): a
+  // coluna "Projetado" e a célula extra em TOTAIS só existem quando há projeção.
+  const projLigada = memoria.parametros_snapshot?.projecao?.ligada === true || memoria.linhas.some((l) => l.projetado)
+  const head = ['Competência', 'Vencimento', 'Valor original', 'Fator correção', 'Correção (R$)', 'Juros (R$)', 'Pagamentos abatidos (R$)', 'Saldo atualizado', ...(projLigada ? ['Projetado'] : [])]
   ws.addRow(head)
 
   const first = ws.rowCount + 1
@@ -21,24 +26,27 @@ export async function pensaoParaXlsx(memoria, caso) {
     const pagos = l.pagamentosAbatidos.reduce((s, p) => s + p.valorPago, 0)
     ws.addRow([
       l.competencia, l.vencimento, l.valorDevidoOriginal, l.correcao.fator, l.correcao.valor, l.juros.valor, pagos, l.saldoAtualizado,
-      l.projetado ? 'sim' : '',
+      ...(projLigada ? [l.projetado ? 'sim' : ''] : []),
     ])
   }
   const last = ws.rowCount
   ws.addRow([
     'TOTAIS', '', { formula: `SUM(C${first}:C${last})` }, '',
     { formula: `SUM(E${first}:E${last})` }, { formula: `SUM(F${first}:F${last})` },
-    { formula: `SUM(G${first}:G${last})` }, { formula: `SUM(H${first}:H${last})` }, '',
+    { formula: `SUM(G${first}:G${last})` }, { formula: `SUM(H${first}:H${last})` },
+    ...(projLigada ? [''] : []),
   ])
 
   if (memoria.totais?.saldoAteUltimoIndiceFirme != null) {
     ws.addRow(['Saldo até o último índice firme', memoria.totais.saldoAteUltimoIndiceFirme])
     ws.addRow(['Saldo com projeção', memoria.totais.saldoComProjecao])
   }
-  const projLigada = memoria.parametros_snapshot?.projecao?.ligada || memoria.linhas.some((l) => l.projetado)
   if (projLigada) {
     ws.addRow([])
     ws.addRow(['Observação — correção projetada'])
+    // Citação do §6.5: fonte da projeção.
+    const dbf = memoria.parametros_snapshot?.projecao?.dataBoletimFocus
+    ws.addRow([dbf ? `Projeção conforme Boletim Focus de ${brDataISO(dbf)}` : 'Projeção informada pelo advogado'])
     ws.addRow([memoria.parametros_snapshot?.projecao?.nota || ''])
   }
 
