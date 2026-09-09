@@ -20,6 +20,7 @@ supabase db push
 2. `0002_pensao.sql` — Plano 02: pensao_parametros, pensao_parcelas, pensao_pagamentos, pensao_memoria + RLS.
 3. `0003_partilha.sql` — Plano 03: partilha_config, partilha_bens, partilha_passivos, partilha_cenarios, partilha_memoria + RLS.
 4. `0004a_auxiliares.sql` — Plano 04a: aliquotas_biblioteca, biblioteca_categorias + colunas uf/municipio/tributario_input em partilha.
+5. `0004b_projecao.sql` — Plano 04b: focus_projecoes + coluna projecao_nota em pensao_parametros.
 
 ## Env
 
