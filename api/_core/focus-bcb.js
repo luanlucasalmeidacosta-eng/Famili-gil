@@ -89,6 +89,39 @@ function urlBoletim(endpoint, ind, dataBoletim) {
     `&$filter=${CAMPOS.indicador} eq '${ind}' and baseCalculo eq 0 and ${CAMPOS.data} eq '${dataBoletim}'`
 }
 
+/** Recorta as linhas de um boletim (já filtrado por data) no intervalo de competências. */
+function recortarBoletim(serie, linhas, competenciaInicioISO, competenciaFimISO) {
+  const recorte = {}
+  if (serie === 'SELIC') {
+    const { porAno } = parseFocusAnual(linhas)
+    for (const comp of competenciasEntre(competenciaInicioISO, competenciaFimISO)) {
+      const ano = comp.slice(0, 4)
+      if (porAno[ano] != null) recorte[comp] = porAno[ano]
+    }
+  } else {
+    const { valores } = parseFocusMensal(linhas)
+    for (const [comp, v] of Object.entries(valores)) {
+      if (comp >= competenciaInicioISO && comp <= competenciaFimISO) recorte[comp] = v
+    }
+  }
+  return recorte
+}
+
+/**
+ * Busca um boletim Focus de data EXATA (`dataBoletim`, ISO 'AAAA-MM-DD') e
+ * recorta as competências no intervalo. Usado no recálculo de versão quando o
+ * cache não persistiu (ex.: RLS negou a gravação): a `dataBoletimFixada`
+ * reproduz os mesmos números buscando direto da API Olinda.
+ * @returns {Promise<{dataBoletim:string, valores:Record<string,number>}>}
+ */
+export async function buscarBoletimFocus({ serie, dataBoletim, competenciaInicioISO, competenciaFimISO, fetchImpl }) {
+  const endpoint = serie === 'SELIC' ? ENDPOINT_ANUAL : ENDPOINT_MENSAL
+  const resp = await fetchImpl(urlBoletim(endpoint, INDICADOR[serie], dataBoletim))
+  if (!resp.ok) throw new Error(`Focus ${serie} indisponível (HTTP ${resp.status})`)
+  const linhas = (await resp.json()).value || []
+  return { dataBoletim, valores: recortarBoletim(serie, linhas, competenciaInicioISO, competenciaFimISO) }
+}
+
 /**
  * Busca a projeção do boletim mais recente para `serie` e recorta as
  * competências em [competenciaInicioISO, competenciaFimISO].
@@ -109,20 +142,7 @@ export async function buscarProjecaoFocus({ serie, competenciaInicioISO, compete
   if (!respBoletim.ok) throw new Error(`Focus ${serie} indisponível (HTTP ${respBoletim.status})`)
   const linhas = (await respBoletim.json()).value || []
 
-  const recorte = {}
-  if (anual) {
-    const { porAno } = parseFocusAnual(linhas)
-    for (const comp of competenciasEntre(competenciaInicioISO, competenciaFimISO)) {
-      const ano = comp.slice(0, 4)
-      if (porAno[ano] != null) recorte[comp] = porAno[ano]
-    }
-  } else {
-    const { valores } = parseFocusMensal(linhas)
-    for (const [comp, v] of Object.entries(valores)) {
-      if (comp >= competenciaInicioISO && comp <= competenciaFimISO) recorte[comp] = v
-    }
-  }
-  return { dataBoletim, valores: recorte }
+  return { dataBoletim, valores: recortarBoletim(serie, linhas, competenciaInicioISO, competenciaFimISO) }
 }
 
 /**
@@ -142,7 +162,18 @@ export async function resolverProjecao({
   for (const { serie } of pedidos) {
     if (dataBoletimFixada) {
       const r = await cachePortFocus.lerBoletim(serie, dataBoletimFixada, competenciaInicioISO, competenciaFimISO)
-      series[serie] = r?.valores || {}
+      if (r && Object.keys(r.valores || {}).length > 0) {
+        series[serie] = r.valores
+        continue
+      }
+      // Cache não persistiu esse boletim (best-effort — RLS pode ter engolido a
+      // gravação). Busca o boletim EXATO daquela data na API Olinda para que a
+      // `dataBoletimFixada` reproduza os mesmos números; grava best-effort.
+      const buscado = await buscarBoletimFocus({
+        serie, dataBoletim: dataBoletimFixada, competenciaInicioISO, competenciaFimISO, fetchImpl,
+      })
+      await cachePortFocus.gravar(serie, dataBoletimFixada, buscado.valores)
+      series[serie] = buscado.valores
       continue
     }
     const doCache = await cachePortFocus.ler(serie, competenciaInicioISO, competenciaFimISO)
