@@ -99,9 +99,20 @@ export async function partilhaParaXlsx(memoria, caso) {
   if ((cenario.tornas || []).length === 0) wsCenario.addRow(['— nenhuma torna informada —'])
 
   const wsTrib = wb.addWorksheet('Tributário')
-  wsTrib.addRow(['Tipo', 'Base (R$)', 'Fundamento'])
-  for (const t of memoria.alertas_tributarios || []) wsTrib.addRow([t.tipo, t.base, t.fundamento])
-  wsTrib.addRow(['Nota: o valor do imposto NÃO é calculado aqui — alíquota é municipal/estadual e varia.'])
+  wsTrib.addRow(['Tipo', 'Base (R$)', 'Alíquota', 'Norma', 'Valor do imposto (R$)', 'Fundamento'])
+  for (const t of memoria.alertas_tributarios || []) {
+    wsTrib.addRow([
+      t.tipo, t.base,
+      t.aliquota != null ? `${t.aliquota}%` : (t.aliquotaNorma ? 'faixas' : '—'),
+      t.aliquotaNorma || '—',
+      t.valorImposto != null ? (t.valorImpostoManual ?? t.valorImposto) : '—',
+      t.fundamento,
+    ])
+  }
+  wsTrib.addRow([])
+  wsTrib.addRow([(memoria.alertas_tributarios || []).some((t) => t.valorImposto != null)
+    ? 'Valor calculado com a alíquota informada; confira a vigência da norma.'
+    : 'O valor do imposto NÃO é calculado aqui — informe a alíquota no cenário.'])
 
   const bufPartilha = await wb.xlsx.writeBuffer()
   return new Uint8Array(bufPartilha)

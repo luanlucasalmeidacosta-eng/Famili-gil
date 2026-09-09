@@ -108,4 +108,15 @@ describe('partilhaParaDocx', () => {
     const texto = await textoDoDocx(await partilhaParaDocx(comAlerta, casoPartilha))
     expect(texto).toContain('saiu particular')
   })
+
+  it('imprime o valor do imposto e a norma quando calculado', async () => {
+    const mem = { ...memoriaPartilha, alertas_tributarios: [
+      { tipo: 'ITBI', base: 200000, fundamento: 'Súmula 116', aliquota: 2, aliquotaNorma: 'Lei Municipal nº 1/2020', valorImposto: 4000 },
+    ] }
+    const texto = await textoDoDocx(await partilhaParaDocx(mem, casoPartilha))
+    expect(texto).toContain('imposto R$ 4000,00')
+    expect(texto).toContain('Lei Municipal nº 1/2020')
+    expect(texto).toContain('confira a vigência')
+    expect(texto).not.toContain('NÃO é calculado')
+  })
 })

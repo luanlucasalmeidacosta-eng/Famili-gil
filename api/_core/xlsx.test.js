@@ -90,4 +90,15 @@ describe('partilhaParaXlsx', () => {
     const texto = await textoDaAba(participacao, 'Cenário')
     expect(texto).toContain('450000')
   })
+
+  it('aba Tributário traz colunas de alíquota e valor quando calculado', async () => {
+    const mem = { ...memoriaPartilha, alertas_tributarios: [
+      { tipo: 'ITCMD', base: 200000, fundamento: 'doação', aliquotaNorma: 'Lei Estadual nº 2/2019', valorImposto: 10000 },
+    ] }
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load(await partilhaParaXlsx(mem, casoPartilha))
+    const ws = wb.getWorksheet('Tributário')
+    const linhas = ws.getSheetValues().map((r) => (r || []).join('|'))
+    expect(linhas.some((l) => l.includes('10000') && l.includes('Lei Estadual nº 2/2019'))).toBe(true)
+  })
 })

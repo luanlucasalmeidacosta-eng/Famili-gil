@@ -115,12 +115,29 @@ export async function partilhaParaDocx(memoria, caso) {
     ],
   })
 
+  const temValor = (memoria.alertas_tributarios || []).some((t) => t.valorImposto != null)
   const tributario = (memoria.alertas_tributarios || []).length
     ? [
         new Paragraph({ text: 'Enquadramento tributário', heading: HeadingLevel.HEADING_2 }),
         // brl() já prefixa "R$ " — não repetir o prefixo aqui.
-        ...memoria.alertas_tributarios.map((t) => new Paragraph(`• ${t.tipo} sobre ${brl(t.base)} — ${t.fundamento}`)),
-        new Paragraph({ children: [new TextRun({ text: 'O valor do imposto NÃO é calculado aqui — alíquota é municipal/estadual e varia.', italics: true })] }),
+        ...memoria.alertas_tributarios.map((t) => {
+          let linha = `• ${t.tipo} sobre ${brl(t.base)}`
+          if (t.valorImposto != null) {
+            const val = t.valorImpostoManual ?? t.valorImposto
+            linha += ` — imposto ${brl(val)}`
+            if (t.valorImpostoManual != null) linha += ' (valor informado pelo advogado)'
+            if (t.aliquota != null) linha += ` · alíquota ${t.aliquota}%`
+            if (t.aliquotaNorma) linha += ` · ${t.aliquotaNorma}`
+          }
+          linha += ` — ${t.fundamento}`
+          return new Paragraph(linha)
+        }),
+        new Paragraph({ children: [new TextRun({
+          text: temValor
+            ? 'Valor calculado com a alíquota informada; confira a vigência da norma.'
+            : 'O valor do imposto NÃO é calculado aqui — informe a alíquota no cenário.',
+          italics: true,
+        })] }),
       ]
     : []
 
