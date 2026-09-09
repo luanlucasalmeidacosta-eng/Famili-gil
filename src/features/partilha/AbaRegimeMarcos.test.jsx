@@ -22,6 +22,30 @@ describe('AbaRegimeMarcos', () => {
     ))
   })
 
+  it('grava uf e municipio no upsert (jurisdição da biblioteca de alíquotas)', async () => {
+    upsert.mockClear()
+    render(<AbaRegimeMarcos caso={{ id: 'c1' }} />)
+    await userEvent.type(screen.getByLabelText(/casamento/i), '2015-01-01')
+    await userEvent.type(screen.getByLabelText(/^uf/i), 'sp')
+    await userEvent.type(screen.getByLabelText(/munic[íi]pio/i), 'São Paulo')
+    await userEvent.click(screen.getByRole('button', { name: /salvar/i }))
+    await waitFor(() => expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ caso_id: 'c1', uf: 'SP', municipio: 'São Paulo' }),
+      expect.anything(),
+    ))
+  })
+
+  it('manda uf e municipio como null quando ficam em branco', async () => {
+    upsert.mockClear()
+    render(<AbaRegimeMarcos caso={{ id: 'c1' }} />)
+    await userEvent.type(screen.getByLabelText(/casamento/i), '2015-01-01')
+    await userEvent.click(screen.getByRole('button', { name: /salvar/i }))
+    await waitFor(() => expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ uf: null, municipio: null }),
+      expect.anything(),
+    ))
+  })
+
   it('mostra o seletor de efeito da separação de fato só quando a data é preenchida', async () => {
     render(<AbaRegimeMarcos caso={{ id: 'c1' }} />)
     expect(screen.queryByLabelText(/efeito da separação de fato/i)).not.toBeInTheDocument()

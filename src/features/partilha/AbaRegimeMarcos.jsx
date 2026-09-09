@@ -4,6 +4,9 @@ import { supabase } from '../../lib/supabase.js'
 const VAZIO = {
   regime_bens: 'comunhao_parcial', data_casamento: '', data_separacao_fato: '',
   separacao_fato_efeito: 'corta_comunicacao', data_ajuizamento: '',
+  // Jurisdição: alimenta a biblioteca de alíquotas (pré-preenchimento e sync
+  // do enquadramento tributário na aba Cenários). Sem isso, aquele fluxo é inerte.
+  uf: '', municipio: '',
 }
 
 export default function AbaRegimeMarcos({ caso }) {
@@ -13,7 +16,12 @@ export default function AbaRegimeMarcos({ caso }) {
 
   useEffect(() => {
     supabase.from('partilha_config').select('*').eq('caso_id', caso.id).maybeSingle()
-      .then(({ data }) => { if (data) setF({ ...VAZIO, ...data }) })
+      .then(({ data }) => {
+        if (!data) return
+        // `select('*')` já traz uf/municipio (migration 0004a); NULL vira '' pra
+        // manter os inputs controlados.
+        setF({ ...VAZIO, ...data, uf: data.uf || '', municipio: data.municipio || '' })
+      })
   }, [caso.id])
 
   async function salvar(e) {
@@ -26,6 +34,8 @@ export default function AbaRegimeMarcos({ caso }) {
       data_separacao_fato: f.data_separacao_fato || null,
       separacao_fato_efeito: f.separacao_fato_efeito,
       data_ajuizamento: f.data_ajuizamento || null,
+      uf: f.uf ? f.uf.toUpperCase() : null,
+      municipio: f.municipio || null,
     }
     const { error } = await supabase.from('partilha_config').upsert(row, { onConflict: 'caso_id' })
     setMsg(error ? `Erro: ${error.message}` : 'Regime e marcos salvos.')
@@ -57,6 +67,12 @@ export default function AbaRegimeMarcos({ caso }) {
       )}
       <label>Data do ajuizamento (opcional)
         <input type="date" value={f.data_ajuizamento} onChange={set('data_ajuizamento')} className="mt-1 w-full rounded border px-2 py-1" />
+      </label>
+      <label>UF (opcional)
+        <input value={f.uf} onChange={set('uf')} maxLength={2} className="mt-1 w-full rounded border px-2 py-1" />
+      </label>
+      <label>Município (opcional)
+        <input value={f.municipio} onChange={set('municipio')} className="mt-1 w-full rounded border px-2 py-1" />
       </label>
       <button type="submit" className="rounded bg-neutral-900 px-3 py-1.5 text-white">Salvar</button>
       {msg && <p role="status" className="text-neutral-600">{msg}</p>}
