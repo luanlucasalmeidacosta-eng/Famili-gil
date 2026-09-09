@@ -672,3 +672,38 @@ describe('calcularPartilha — bem financiado fecha o balanço das tornas', () =
     expect(r.quadroQuinhoes.parteA.torna + r.quadroQuinhoes.parteB.torna).toBe(0)
   })
 })
+
+describe('regressão — base do excesso de meação (com bem financiado)', () => {
+  const marcos = { dataCasamento: '2015-01-01', dataSeparacaoFato: null, separacaoFatoEfeito: 'corta_comunicacao', dataAjuizamento: null }
+
+  it('bem financiado alocado a A: tornas somam zero e a base do ITCMD reflete o excesso líquido', () => {
+    const bens = [{
+      id: 'b1', descricao: 'Casa', tipo: 'imovel', valorMercado: 500000,
+      dataAquisicao: '2018-01-01', formaAquisicao: 'oneroso', titular: 'parte_a',
+      financiado: true, saldoDevedor: 200000, clausulaIncomunicabilidade: false,
+    }]
+    const cenario = { pctParteA: 50, alocacoes: [{ bemId: 'b1', para: 'parte_a' }], tornas: [] }
+    const m = calcularPartilha({ regimeBens: 'comunhao_parcial', marcos, bens, passivos: [], cenario })
+
+    const somaTornas = m.quadroQuinhoes.parteA.torna + m.quadroQuinhoes.parteB.torna
+    expect(Math.abs(somaTornas)).toBeLessThanOrEqual(0.01)
+
+    // acervo líquido = 500000 - 200000 = 300000; quinhão ideal 150000 cada;
+    // A ficou com 300000 → torna de A = +150000; excesso = 150000.
+    // Sem torna onerosa informada → base do ITCMD = 150000, base do ITBI = 0.
+    const itcmd = m.alertasTributarios.find((x) => x.tipo === 'ITCMD')
+    expect(itcmd.base).toBe(150000)
+    expect(m.alertasTributarios.find((x) => x.tipo === 'ITBI')).toBeUndefined()
+  })
+
+  it('participação final: alertasTributarios continua vazio', () => {
+    const bens = [{
+      id: 'b1', descricao: 'Loja', tipo: 'imovel', valorMercado: 300000,
+      dataAquisicao: '2018-01-01', formaAquisicao: 'oneroso', titular: 'parte_a',
+      financiado: false, saldoDevedor: null, clausulaIncomunicabilidade: false,
+    }]
+    const cenario = { pctParteA: 50, alocacoes: [], tornas: [] }
+    const m = calcularPartilha({ regimeBens: 'participacao_final_aquestos', marcos, bens, passivos: [], cenario })
+    expect(m.alertasTributarios).toEqual([])
+  })
+})
