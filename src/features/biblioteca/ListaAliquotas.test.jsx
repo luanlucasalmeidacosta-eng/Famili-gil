@@ -58,4 +58,20 @@ describe('ListaAliquotas (itcmd) — validação de faixas', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/última faixa deve ser aberta/i)
     expect(insert).not.toHaveBeenCalled()
   })
+
+  it('rejeita teto preenchido com alíquota em branco e não chama insert', async () => {
+    const { default: ListaAliquotas } = await import('./ListaAliquotas.jsx')
+    render(<ListaAliquotas tipo="itcmd" />)
+    await userEvent.click(screen.getByRole('button', { name: /adicionar/i }))
+    await userEvent.type(screen.getByLabelText(/uf/i), 'SP')
+    await userEvent.type(screen.getByLabelText(/norma/i), 'Lei Estadual nº 13.798/2009')
+    // faixa 1: teto preenchido, alíquota em branco → erro
+    await userEvent.type(screen.getByLabelText(/teto da faixa 1/i), '100000')
+    // faixa 2 (última): só alíquota preenchida
+    const inputsAliquota = screen.getAllByLabelText(/al[íi]quota da faixa/i)
+    await userEvent.type(inputsAliquota[1], '7')
+    await userEvent.click(screen.getByRole('button', { name: /salvar/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/faixa 1.*al[íi]quota/i)
+    expect(insert).not.toHaveBeenCalled()
+  })
 })

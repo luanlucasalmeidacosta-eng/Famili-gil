@@ -69,6 +69,15 @@ export default function ListaAliquotas({ tipo }) {
         fonte_url: form.fonte_url || null, observacao: form.observacao || null,
       }
     } else {
+      // Validar alíquotas em branco em linhas preenchidas, antes de montarFaixas
+      for (let i = 0; i < form.faixas.length; i++) {
+        const x = form.faixas[i]
+        const ehPreenchida = x.ate !== '' || x.aliquota !== ''
+        if (ehPreenchida && x.aliquota === '') {
+          setErro(`Faixa ${i + 1}: informe a alíquota.`)
+          return
+        }
+      }
       const faixas = montarFaixas()
       const v = validarFaixasItcmd(faixas)
       if (!v.ok) { setErro(v.motivo); return }
