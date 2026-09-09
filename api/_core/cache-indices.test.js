@@ -48,3 +48,48 @@ describe('criarCachePort', () => {
     await expect(criarCachePort(sb).gravar('IPCA', [{ ref: '2024-09-01', valor: 1 }])).resolves.toBeUndefined()
   })
 })
+
+import { criarCachePortFocus } from './cache-indices.js'
+
+function supaFocus(rows, { onUpsert } = {}) {
+  return {
+    from: () => ({
+      select: () => ({ eq: () => ({ gte: () => ({ lte: async () => ({ data: rows, error: null }) }) }) }),
+      upsert: async (r) => { onUpsert?.(r); return { error: null } },
+    }),
+  }
+}
+
+describe('criarCachePortFocus', () => {
+  it('ler: devolve o boletim mais recente do intervalo', async () => {
+    const rows = [
+      { serie: 'IPCA', competencia: '2026-10-01', mediana: 0.30, data_boletim: '2026-08-29' },
+      { serie: 'IPCA', competencia: '2026-10-01', mediana: 0.32, data_boletim: '2026-09-05' },
+      { serie: 'IPCA', competencia: '2026-11-01', mediana: 0.28, data_boletim: '2026-09-05' },
+    ]
+    const cp = criarCachePortFocus(supaFocus(rows))
+    const r = await cp.ler('IPCA', '2026-10-01', '2026-11-01')
+    expect(r.dataBoletim).toBe('2026-09-05')
+    expect(r.valores).toEqual({ '2026-10-01': 0.32, '2026-11-01': 0.28 })
+  })
+
+  it('lerBoletim: filtra por data_boletim exata', async () => {
+    const rows = [
+      { serie: 'IPCA', competencia: '2026-10-01', mediana: 0.30, data_boletim: '2026-08-29' },
+      { serie: 'IPCA', competencia: '2026-10-01', mediana: 0.32, data_boletim: '2026-09-05' },
+    ]
+    const cp = criarCachePortFocus(supaFocus(rows))
+    const r = await cp.lerBoletim('IPCA', '2026-08-29', '2026-10-01', '2026-10-01')
+    expect(r.valores).toEqual({ '2026-10-01': 0.30 })
+  })
+
+  it('gravar: upsert uma linha por competência', async () => {
+    let recebido
+    const cp = criarCachePortFocus(supaFocus([], { onUpsert: (r) => { recebido = r } }))
+    await cp.gravar('IPCA', '2026-09-05', { '2026-10-01': 0.32, '2026-11-01': 0.28 })
+    expect(recebido).toEqual([
+      { serie: 'IPCA', competencia: '2026-10-01', mediana: 0.32, data_boletim: '2026-09-05' },
+      { serie: 'IPCA', competencia: '2026-11-01', mediana: 0.28, data_boletim: '2026-09-05' },
+    ])
+  })
+})
